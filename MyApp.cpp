@@ -1,0 +1,620 @@
+#include "Headers/MyApp.h"
+#include "Headers/Model.h"
+#include "SDL_GLDebugMessageCallback.h"
+#include "ObjParser.h"
+#include "ProgramBuilder.h"
+
+#include <imgui.h>
+#include <iostream>
+#include <string>
+#include <sstream>
+
+CMyApp::CMyApp()
+{
+}
+
+CMyApp::~CMyApp()
+{
+}
+
+void CMyApp::SetupDebugCallback()
+{
+	// Enable and set the debug callback function if we are in debug context
+	GLint context_flags;
+	glGetIntegerv(GL_CONTEXT_FLAGS, &context_flags);
+	if (context_flags & GL_CONTEXT_FLAG_DEBUG_BIT) {
+		glEnable(GL_DEBUG_OUTPUT);
+		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+		glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, GL_FALSE);
+		glDebugMessageControl(GL_DONT_CARE, GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR, GL_DONT_CARE, 0, nullptr, GL_FALSE);
+		glDebugMessageCallback(SDL_GLDebugMessageCallback, nullptr);
+	}
+}
+
+void CMyApp::InitShaders()
+{
+	// Drawing objects
+	m_programSimpleID = glCreateProgram();
+	ProgramBuilder{ m_programSimpleID }
+		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Vert_PosNormTex.vert")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Frag_Simple.frag")
+		.Link();
+
+	// Drawing models
+	m_programModelID = glCreateProgram();
+	ProgramBuilder{ m_programModelID }
+		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Models/Vert_Model.vert")
+		.ShaderStage(GL_GEOMETRY_SHADER, "Shaders/Models/Geom_Model_old.geom")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Models/Frag_Model.frag")
+		.Link();
+
+	// Conemap generation
+	m_programConemapID = glCreateProgram();
+	ProgramBuilder{ m_programConemapID }
+		.ShaderStage(GL_COMPUTE_SHADER, "Shaders/Conemap/Comp_Conemap.comp")
+		.Link();
+
+	InitAxesShader();
+	InitSkyboxShader();
+}
+
+void CMyApp::CleanShaders()
+{
+	glDeleteProgram(m_programSimpleID);
+	glDeleteProgram(m_programConemapID);
+	glDeleteProgram(m_programModelID);
+	CleanSkyboxShader();
+	CleanAxesShader();
+}
+
+void CMyApp::InitSkyboxShader() {
+	m_programSkyboxID = glCreateProgram();
+	ProgramBuilder{ m_programSkyboxID }
+		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Skybox/Vert_skybox.vert")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Skybox/Frag_skybox_skeleton.frag")
+		.Link();
+}
+
+void CMyApp::CleanSkyboxShader() {
+	glDeleteProgram(m_programSkyboxID);
+}
+
+void CMyApp::InitAxesShader()
+{
+	m_programAxesID = glCreateProgram();
+	ProgramBuilder{ m_programAxesID }
+		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Axes/Vert_axes.vert")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Axes/Frag_PosCol.frag")
+		.Link();
+}
+
+void CMyApp::CleanAxesShader()
+{
+	glDeleteProgram(m_programAxesID);
+}
+
+void CMyApp::InitGeometry()
+{
+	InitModels();
+	InitSkyboxGeometry();
+}
+
+void CMyApp::CleanGeometry()
+{
+	CleanModels();
+	CleanSkyboxGeometry();
+}
+
+void CMyApp::InitSkyboxGeometry() {
+	// skybox geo
+	MeshObject<glm::vec3> skyboxCPU =
+	{
+		std::vector<glm::vec3>
+		{
+			// back
+			glm::vec3(-1, -1, -1),
+			glm::vec3(1, -1, -1),
+			glm::vec3(1,  1, -1),
+			glm::vec3(-1,  1, -1),
+			// front
+			glm::vec3(-1, -1, 1),
+			glm::vec3(1, -1, 1),
+			glm::vec3(1,  1, 1),
+			glm::vec3(-1,  1, 1),
+		},
+
+		std::vector<GLuint>
+		{
+		// back
+		0, 1, 2,
+		2, 3, 0,
+			// front
+			4, 6, 5,
+			6, 4, 7,
+			// left
+			0, 3, 4,
+			4, 3, 7,
+			// right
+			1, 5, 2,
+			5, 6, 2,
+			// bottom
+			1, 0, 4,
+			1, 4, 5,
+			// top
+			3, 2, 6,
+			3, 6, 7,
+		}
+	};
+
+	m_SkyboxGPU = CreateGLObjectFromMesh(skyboxCPU, { { 0, offsetof(glm::vec3, x), 3, GL_FLOAT } });
+}
+
+void CMyApp::CleanSkyboxGeometry()
+{
+	CleanOGLObject(m_SkyboxGPU);
+}
+
+void CMyApp::InitModels() {
+	{
+		const std::initializer_list<VertexAttributeDescriptor> vertexAttribList =
+		{
+			{ 0, offsetof(VertexMergedNorm, position), 4, GL_FLOAT },
+			{ 1, offsetof(VertexMergedNorm, normal), 3, GL_FLOAT },
+			{ 2, offsetof(VertexMergedNorm, mergedNormal), 3, GL_FLOAT },
+			{ 3, offsetof(VertexMergedNorm, texcoord), 2, GL_FLOAT }
+		};
+
+		// Suzanne
+		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/Suzanne.obj"));
+		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/ico-sphere-3.obj"));
+		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/ico-sphere-4.obj"));
+		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-32.obj"));
+		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-64.obj"));
+		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/cube.obj"));
+
+		// SQUARE
+		MeshObject<VertexMergedNorm> ObjectCPU = {
+			{
+				{glm::vec4(0, 0, 0, 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 0)},
+				{glm::vec4(0, 0, 1., 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 1.)},
+				{glm::vec4(1., 0, 1., 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 1.)},
+				{glm::vec4(1., 0, 0, 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 0)}
+			},
+			{
+				0,1,2,
+				0,2,3
+			}
+		};
+
+		m_models.push_back(new Model(
+			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::scale(glm::vec3(10.0f, 10.0f, 10.0f)),
+			CreateGLObjectFromMesh(ObjectCPU, vertexAttribList), false
+		));
+	}
+	
+	{
+		// inner sphere
+		/*
+		const std::initializer_list<VertexAttributeDescriptor> vertexAttribList =
+		{
+			{ 0, offsetof(VertexMergedNorm, position), 4, GL_FLOAT },
+			{ 1, offsetof(VertexMergedNorm, normal), 3, GL_FLOAT },
+			{ 2, offsetof(VertexMergedNorm, mergedNormal), 3, GL_FLOAT },
+			{ 3, offsetof(VertexMergedNorm, texcoord), 2, GL_FLOAT }
+		};
+		MeshObject<VertexMergedNorm> ModelCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/ico-sphere-4.obj"));
+		m_models.push_back(new Model(
+			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::scale(glm::vec3(1.0f, 1.0f, 1.0f)),
+			CreateGLObjectFromMesh(ModelCPU, vertexAttribList), false
+		));
+		*/
+	}
+}
+
+void CMyApp::CleanModels() {
+	for (int i = 0; i < m_models.size(); ++i) {
+		delete(m_models[i]);
+	}
+	m_models.clear();
+}
+
+void CMyApp::InitTexture() {
+	// Model texture
+	{
+		ImageRGBA image;
+		image = ImageFromFile("Assets/metal.png");
+		glGenTextures(1, &m_modelTextureID);
+		glBindTexture(GL_TEXTURE_2D, m_modelTextureID);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data());
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+
+	InitHeightMapTexture();
+	InitConemapTexture();
+	InitSkyboxTexture();
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void CMyApp::CleanTexture() {
+	glDeleteTextures(1, &m_modelTextureID);
+	CleanHeightMapTexture();
+	CleanConemapTexture();
+	CleanSkyboxGeometry();
+}
+
+void CMyApp::InitHeightMapTexture() {
+	// Heightmap texture
+	{
+		ImageRGBA image;
+		image = ImageFromFile(m_heightMaps[m_activeHeightMap]);
+		glCreateTextures(GL_TEXTURE_2D, 1, &m_heightmapTexureID);
+		glTextureStorage2D(m_heightmapTexureID, 1, GL_RGBA8, image.width, image.height);
+		glBindTexture(GL_TEXTURE_2D, m_heightmapTexureID);
+
+		// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+		glTextureSubImage2D(m_heightmapTexureID, 0, 0, 0, image.width, image.height, GL_RGBA, GL_UNSIGNED_BYTE, image.data());
+
+		// Setup member fields
+		m_HMres.x = image.width;
+		m_HMres.y = image.height;
+		m_HMres_r.x = 1.f / image.width;
+		m_HMres_r.y = 1.f / image.height;
+	}
+}
+
+void CMyApp::CleanHeightMapTexture() {
+	glDeleteTextures(1, &m_heightmapTexureID);
+}
+
+void CMyApp::InitConemapTexture() {
+	if (m_conemapTextureID != 0) {
+		glDeleteTextures(1, &m_conemapTextureID);
+	}
+	glGenTextures(1, &m_conemapTextureID);
+	glBindTexture(GL_TEXTURE_2D, m_conemapTextureID);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, m_HMres.x, m_HMres.y, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void CMyApp::CleanConemapTexture() {
+	glDeleteTextures(1, &m_conemapTextureID);
+}
+
+void CMyApp::InitSkyboxTexture() {
+	// skybox texture
+	static const char* skyboxFiles[6] = {
+		"Assets/xpos.png",
+		"Assets/xneg.png",
+		"Assets/ypos.png",
+		"Assets/yneg.png",
+		"Assets/zpos.png",
+		"Assets/zneg.png",
+	};
+
+	ImageRGBA images[6];
+	for (int i = 0; i < 6; ++i)
+	{
+		images[i] = ImageFromFile(skyboxFiles[i], false);
+	}
+
+	glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &m_skyboxTextureID);
+	glTextureStorage2D(m_skyboxTextureID, 1, GL_RGBA8, images[0].width, images[0].height);
+
+	for (int face = 0; face < 6; ++face)
+	{
+		glTextureSubImage3D(m_skyboxTextureID, 0, 0, 0, face, images[face].width, images[face].height, 1, GL_RGBA, GL_UNSIGNED_BYTE, images[face].data());
+	}
+
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+}
+
+void CMyApp::CleanSkyboxTexture() {
+	glDeleteTextures(1, &m_skyboxTextureID);
+}
+
+bool CMyApp::Init()
+{
+	SetupDebugCallback();
+
+	// Set a bluish clear color
+	// glClear() will use this for clearing the color buffer.
+	glClearColor(0.125f, 0.25f, 0.5f, 1.0f);
+
+	InitShaders();
+	InitTexture();
+	InitGeometry();
+
+	//
+	// Other
+	//
+	// glEnable(GL_CULL_FACE);	 // Enable discarding the back-facing faces.
+	glCullFace(GL_BACK);     // GL_BACK: facets facing away from camera, GL_FRONT: facets facing towards the camera
+	glEnable(GL_DEPTH_TEST); // Enable depth testing. (for overlapping geometry)
+	glDepthFunc(GL_LESS);
+
+	// Camera
+	m_camera.SetView(
+		glm::vec3(0, 20, 20),	// From where we look at the scene - eye
+		glm::vec3(0, 4, 0),		// Which point of the scene we are looking at - at
+		glm::vec3(0, 1, 0)		// Upwards direction - up
+	);
+	m_cameraManipulator.SetCamera(&m_camera);
+
+	RenderConemap();
+
+	return true;
+}
+
+void CMyApp::RenderConemap() {
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_heightmapTexureID);
+
+	int localSizeX = 16;
+	int localSizeY = 16;
+	GLuint numWorkgroupsX = (m_HMres.x + localSizeX - 1) / localSizeX;
+	GLuint numWorkgroupsY = (m_HMres.y + localSizeY - 1) / localSizeY;
+
+	glUseProgram(m_programConemapID);
+	glBindImageTexture(0, m_conemapTextureID, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG8);
+
+	glUniform1i(ul(m_programConemapID, "width"), m_HMres.x);
+	glUniform1i(ul(m_programConemapID, "height"), m_HMres.y);
+	glUniform1i(ul(m_programConemapID, "inputImage"), 0);
+
+	glDispatchCompute(numWorkgroupsX, numWorkgroupsY, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void CMyApp::Clean()
+{
+	CleanShaders();
+	CleanGeometry();
+	CleanTexture();
+}
+
+void CMyApp::Update(const SUpdateInfo& updateInfo)
+{
+	m_cameraManipulator.Update(updateInfo.DeltaTimeInSec);
+	m_ElapsedTimeInSec = updateInfo.ElapsedTimeInSec;
+}
+
+void CMyApp::DrawAxes()
+{
+	glUseProgram(m_programAxesID);
+
+	glm::mat4 axisWorld = glm::translate(m_camera.GetAt());
+	glProgramUniformMatrix4fv( m_programAxesID, ul(m_programAxesID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
+	glProgramUniformMatrix4fv( m_programAxesID, ul(m_programAxesID, "world"), 1, GL_FALSE, glm::value_ptr(axisWorld));
+
+	// We always want to see it, regardless of whether there is an object in front of it
+	glDisable(GL_DEPTH_TEST);
+	
+	glDrawArrays(GL_LINES, 0, 6);
+	glUseProgram(0);
+	glEnable(GL_DEPTH_TEST);
+}
+
+void CMyApp::RenderModels() {
+	//
+	// models
+	//
+	for (auto m : m_models) {
+		if (m->GetWireFrame()) {
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		}
+		else {
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		}
+
+		GLuint progID = m->GetProgram();
+		glUseProgram(progID);
+
+		{	// SET UNIFORMS FOR PARALLAX MAPPING
+			// uniform vec2 HMres;     // height map resolution (w, h)
+			glUniform2f(ul(progID, "HMres"), m_HMres.x, m_HMres.y);
+			// uniform vec2 HMres_r;   // reciprical of the height map resolution (1/w, 1/h)
+			glUniform2f(ul(progID, "HMres_r"), m_HMres_r.x, m_HMres_r.y);
+			// uniform float relax = 1.;
+			glUniform1i(ul(progID, "maxSteps"), m_maxSteps);
+			// uniform vec3 camPos;
+			glm::vec3 camPos = m_camera.GetEye();
+			glUniform3f(ul(progID, "camPos"), camPos.x, camPos.y, camPos.z);
+			glUniform1i(ul(progID, "discardFragments"), m_discardFragments);
+			// uniform vec3 lightDir;
+			glUniform3f(ul(progID, "lightDir"), m_lightPos.x, m_lightPos.y, m_lightPos.z);
+			// uniform float lightIntensity = 1.;
+			glUniform1i(ul(progID, "displayNonConverged"), m_displayNonConverged);
+			glUniform1f(ul(progID, "epsilon"), m_epsilon);
+		}
+
+		// texture
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m->GetTexture());
+		glUniform1i(ul(progID, "texImage"), 0);
+
+		// cone map
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m->GetConemap());
+		glUniform1i(ul(progID, "coneMap"), 1);
+
+		glUniformMatrix4fv(ul(progID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
+		glUniformMatrix4fv(ul(progID, "world"), 1, GL_FALSE, glm::value_ptr(m->GetTransform()));
+		glUniformMatrix4fv(ul(progID, "worldIT"), 1, GL_FALSE, glm::value_ptr(m->GetTransform()));
+
+		glBindVertexArray(m->GetVAO());
+
+		glDrawElements(m->GetDrawMode(), m->GetVertexCount(), GL_UNSIGNED_INT, nullptr);
+	}
+
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+	glUseProgram(0);
+	glBindVertexArray(0);
+}
+
+void CMyApp::RenderSkybox() {
+	glUseProgram(m_programSkyboxID);
+
+	glProgramUniform1i(m_programSkyboxID, ul(m_programSkyboxID, "skyboxTexture"), 1);
+	glProgramUniformMatrix4fv(m_programSkyboxID, ul(m_programSkyboxID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
+	glProgramUniformMatrix4fv(m_programSkyboxID, ul(m_programSkyboxID, "world"), 1, GL_FALSE, glm::value_ptr(glm::translate(m_camera.GetEye())));
+
+	// Save the last Z-test, namely the relation by which we update the pixel.
+	GLint prevDepthFnc;
+	glGetIntegerv(GL_DEPTH_FUNC, &prevDepthFnc);
+
+	// Now we use less-then-or-equal, because we push everything to the far clipping plane
+	glDepthFunc(GL_LEQUAL);
+
+	glBindTextureUnit(1, m_skyboxTextureID);
+	glBindVertexArray(m_SkyboxGPU.vaoID);
+
+	glDrawElements(GL_TRIANGLES, m_SkyboxGPU.count, GL_UNSIGNED_INT, nullptr);
+
+	glDepthFunc(prevDepthFnc);
+
+	glUseProgram(0);
+	glBindVertexArray(0);
+	glBindTextureUnit(0, 0);
+}
+
+void CMyApp::Render()
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	RenderModels();
+	// RenderSkybox();
+	DrawAxes();
+}
+
+void CMyApp::RenderGUI()
+{
+	ImGui::Begin("Options window");
+	{
+		ImGui::Text("Render resolution %dx%d", m_width, m_height);
+
+
+		// heightmap
+		int hmapID = m_activeHeightMap;
+
+		if (ImGui::BeginCombo("Heightmap", m_heightMaps[hmapID].c_str()))
+		{
+			for (int i = 0; i < m_heightMaps.size(); ++i) {
+				if (ImGui::Selectable(m_heightMaps[i].c_str(), hmapID == i)) {
+					hmapID = i;
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		if (hmapID != m_activeHeightMap) {
+			// regenerate conemap
+			CleanConemapTexture();
+			CleanHeightMapTexture();
+			m_activeHeightMap = hmapID;
+			InitHeightMapTexture();
+			InitConemapTexture();
+			RenderConemap();
+		}
+
+		ImGui::SliderFloat3("light_dir", &m_lightPos.x, -10.f, 10.f);
+		ImGui::SliderFloat3("light_col", &m_lightCol.x, 0.f, 1.f);
+		ImGui::Image((ImTextureID) m_conemapTextureID, ImVec2(256, 256));
+
+		for (int i = 0; i < m_models.size(); ++i) {
+			std::stringstream label{};
+			label << "wireframe " << i;
+			
+			bool wireframe = m_models[i]->GetWireFrame();
+			ImGui::Checkbox(label.str().c_str(), &wireframe);
+			m_models[i]->SetWireFrame(wireframe);
+		}
+
+		ImGui::SliderInt("max steps", &m_maxSteps, 1, 100);
+		ImGui::SliderFloat("epsilon", &m_epsilon, 0.0, 1.0, "%.33f");
+		ImGui::Checkbox("show non-converge", &m_displayNonConverged);
+		ImGui::Checkbox("discard fragments", &m_discardFragments);
+	}
+	ImGui::End();
+}
+
+// https://wiki.libsdl.org/SDL2/SDL_KeyboardEvent
+// https://wiki.libsdl.org/SDL2/SDL_Keysym
+// https://wiki.libsdl.org/SDL2/SDL_Keycode
+// https://wiki.libsdl.org/SDL2/SDL_Keymod
+
+void CMyApp::KeyboardDown(const SDL_KeyboardEvent& key)
+{
+	if (key.repeat == 0) // Triggers only once when held
+	{
+		if (key.keysym.sym == SDLK_F5 && key.keysym.mod & KMOD_CTRL) // CTRL + F5
+		{
+			CleanShaders();
+			InitShaders();
+		}
+		if (key.keysym.sym == SDLK_F1) // F1
+		{
+			GLint polygonModeFrontAndBack[2] = {};
+			// https://registry.khronos.org/OpenGL-Refpages/gl4/html/glGet.xhtml
+			glGetIntegerv(GL_POLYGON_MODE, polygonModeFrontAndBack); // Query the current polygon mode. It gives the front and back modes separately.
+			GLenum polygonMode = (polygonModeFrontAndBack[0] != GL_FILL ? GL_FILL : GL_LINE); // Switch between FILL and LINE
+			// https://registry.khronos.org/OpenGL-Refpages/gl4/html/glPolygonMode.xhtml
+			glPolygonMode(GL_FRONT_AND_BACK, polygonMode); // Set the new polygon mode
+		}
+	}
+	m_cameraManipulator.KeyboardDown(key);
+}
+
+void CMyApp::KeyboardUp(const SDL_KeyboardEvent& key)
+{
+	m_cameraManipulator.KeyboardUp(key);
+}
+
+// https://wiki.libsdl.org/SDL2/SDL_MouseMotionEvent
+
+void CMyApp::MouseMove(const SDL_MouseMotionEvent& mouse)
+{
+	m_cameraManipulator.MouseMove(mouse);
+}
+
+// https://wiki.libsdl.org/SDL2/SDL_MouseButtonEvent
+
+void CMyApp::MouseDown(const SDL_MouseButtonEvent& mouse)
+{
+}
+
+void CMyApp::MouseUp(const SDL_MouseButtonEvent& mouse)
+{
+}
+
+// https://wiki.libsdl.org/SDL2/SDL_MouseWheelEvent
+
+void CMyApp::MouseWheel(const SDL_MouseWheelEvent& wheel)
+{
+	m_cameraManipulator.MouseWheel(wheel);
+}
+
+// New window size
+void CMyApp::Resize(int _w, int _h)
+{
+	glViewport(0, 0, _w, _h);
+	m_camera.SetAspect(static_cast<float>(_w) / _h);
+	m_width = _w;
+	m_height = _h;
+}
+
+// Other SDL events
+// https://wiki.libsdl.org/SDL2/SDL_Event
+
+void CMyApp::OtherEvent(const SDL_Event& ev)
+{
+}
