@@ -8,101 +8,90 @@ uniform int width = 1;
 uniform int height = 1;
 uniform sampler2D inputImage;
 
-/*
-void main() {
+float getTan(float fx, vec2 xuv, vec2 nxny) {
+	vec2 yuv = nxny / vec2(width - 1, height - 1);
+	float fy = texture(inputImage, yuv).r;
 
-	// Texture is 1x1 in size
-	if (width < 2 && height < 2) {
-		imageStore(outputImage, ivec2(0, 0), vec4(texture(inputImage, vec2(0,0)).r, 0, 0, 1.));
-	}
-
-	uint x = gl_GlobalInvocationID.x;
-	uint y = gl_GlobalInvocationID.y;
-
-	vec2 xuv = vec2(
-		width < 2 ? 0.0 : float(x) / float(width - 1),
-		height < 2 ? 0.0 : float(y) / float(height - 1)
-	);
-	float fx = texture(inputImage, xuv).r;
-
-	float maxCos = 0.;
-
-    for (int i = 0; i < width; ++i) {
-		for (int j = 0; j < height; ++j) {
-
-			if (i == x && j == y) {
-				continue;
-			}
-
-			vec2 yuv = vec2(
-				width < 2 ? 0.0 : float(i) / float(width - 1),
-				height < 2 ? 0.0 : float(j) / float(height - 1)
-			);
-			float fy = texture(inputImage, yuv).r;
-
-			float a = length(yuv - xuv);
-			float b = fy - fx;
-			float c = sqrt(a * a + b * b);
-
-			float cosa = b / c;
-			maxCos = max(maxCos, cosa);
-
-			// maxm = length(xuv - vec2(0));
-
-		}
-	}
-
-	imageStore(outputImage, ivec2(gl_GlobalInvocationID), vec4(fx, maxCos, 0, 1.));
-	// imageStore(outputImage, ivec2(gl_GlobalInvocationID), vec4(.5, 0, 0, 1.));
-    
+	return max(0., length(xuv - yuv) / (fy - fx));
 }
-*/
 
 void main() {
 
-	uint x = gl_GlobalInvocationID.x;
-	uint y = gl_GlobalInvocationID.y;
+	// Filter collapsed textures
+	if (width < 2 || height < 2) {
+		return;
+	}
 
-	// vec2 xuv = vec2(float(x) / float(width), float(y) / float(height));
-	vec2 xuv = vec2(
-		width < 2 ? 0.0 : float(x) / float(width - 1),
-		height < 2 ? 0.0 : float(y) / float(height - 1)
-	);
+	int x = int(gl_GlobalInvocationID.x);
+	int y = int(gl_GlobalInvocationID.y);
+
+	vec2 xuv = vec2(float(x) / float(width - 1), float(y) / float(height - 1));
 	float fx = texture(inputImage, xuv).r;
 
-	// float maxm = 0.;
-	float minTan = 1.;
+	float minTan = 1.;		// deg. 45
 
-    for (int i = 0; i <= width; ++i) {
-		for (int j = 0; j <= height; ++j) {
+	// Expand outward layer by layer
+	for (int r = 1; r < max(width, height); ++r) {
+		float tn = -1.;
 
-			if (i == x && j == y) {
-				continue;
+		// Break if there is no smaller tangen
+		if (length(xuv - (vec2(x, y + r) / vec2(width - 1, height - 1))) / (1 - fx) > minTan) {		// smallest possible tangent is greater than minTan
+			break;
+		}
+
+		// Top side (left to right)
+		for (int i = -r; i <= r; ++i) {
+			int nx = x + i;
+			int ny = y - r;
+			if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+				tn = getTan(fx, xuv, vec2(nx, ny));
+				if (tn > 0) {
+					minTan = min(minTan, tn);
+				}
 			}
+		}
 
-			// vec2 yuv = vec2(float(i) / float(width), float(j) / float(height));
-			vec2 yuv = vec2(
-				width < 2 ? 0.0 : float(i) / float(width - 1),
-				height < 2 ? 0.0 : float(j) / float(height - 1)
-			);
-			float fy = texture(inputImage, yuv).r;
+		// Right side (top to bottom)
+		for (int i = -r + 1; i <= r; ++i) {
+			int nx = x + r;
+			int ny = y + i;
+			if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+				tn = getTan(fx, xuv, vec2(nx, ny));
+				if (tn > 0) {
+					minTan = min(minTan, tn);
+				}
+			}
+		}
 
-			// float m = abs(fy - fx) / length(xuv - yuv);
+		// Bottom side (right to left)
+		for (int i = r - 1; i >= -r; --i) {
+			int nx = x + i;
+			int ny = y + r;
+			if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+				tn = getTan(fx, xuv, vec2(nx, ny));
+				if (tn > 0) {
+					minTan = min(minTan, tn);
+				}
+			}
+		}
 
-			float t = length(xuv - yuv) / (fy - fx);
-			// float t = length(vec2(x,y) - vec2(i,j)) / abs(fy - fx);
+		// Left side (bottom to top)
+		for (int i = r - 1; i >= -r + 1; --i) {
+			int nx = x - r, ny = y + i;
+			if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+				tn = getTan(fx, xuv, vec2(nx, ny));
+				if (tn > 0) {
+					minTan = min(minTan, tn);
+				}
+			}
+		}
 
-			// maxm = max(maxm, m);
-			if (t>0)
-			minTan = min(minTan, t);
-
-			// maxm = length(xuv - vec2(0));
-
+		// No more fields found in the matrix
+		if (tn < 0) {
+			break;
 		}
 	}
 
-	minTan = max(minTan, 0);
 	imageStore(outputImage, ivec2(gl_GlobalInvocationID), vec4(fx, minTan, 0, 1.));
-	// imageStore(outputImage, ivec2(gl_GlobalInvocationID), vec4(.5, 0, 0, 1.));
     
 }

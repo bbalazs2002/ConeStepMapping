@@ -321,8 +321,8 @@ void main() {
     col.rgb *= diffuse;
     */
 
-    // col = texture(texImage, u3).xyz;
-    col = vec3(1,1,0);
+    col = texture(texImage, u3).xyz;
+    // col = vec3(1,1,0);
     // col = vec3(I.t);
 
     if (!I.wasHit) {
@@ -332,7 +332,6 @@ void main() {
             discard;
         }
     }
-    
     
     fs_out_col = vec4(col, 1.);
 }
