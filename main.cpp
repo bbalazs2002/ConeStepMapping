@@ -16,71 +16,8 @@
 
 #include "Headers/MyApp.h"
 
-class Traverse {
-public:
-	static const int h = 5;
-	static const int w = 5;
-	static void traverseConcentricCircles(int x, int y) {
-
-		std::cout << "Traversal Order:\n";
-
-		// Print the center element first
-		std::cout << "(" << y << "; " << x << ") " << std::endl;
-
-		// Expand outward layer by layer
-		for (int r = 1; r < std::max(w, h); r++) {
-			bool found = false;
-
-			// Top side (left to right)
-			for (int i = -r; i <= r; i++) {
-				int nx = x + i, ny = y - r;
-				if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-					std::cout << "(" << ny << "; " << nx << ")" << std::endl;
-					found = true;
-				}
-			}
-
-			// Right side (top to bottom)
-			for (int i = -r + 1; i <= r; i++) {
-				int nx = x + r, ny = y + i;
-				if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-					std::cout << "(" << ny << "; " << nx << ")" << std::endl;
-					found = true;
-				}
-			}
-
-			// Bottom side (right to left)
-			for (int i = r - 1; i >= -r; i--) {
-				int nx = x + i, ny = y + r;
-				if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-					std::cout << "(" << ny << "; " << nx << ")" << std::endl;
-					found = true;
-				}
-			}
-
-			// Left side (bottom to top)
-			for (int i = r - 1; i >= -r + 1; i--) {
-				int nx = x - r, ny = y + i;
-				if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-					std::cout << "(" << ny << "; " << nx << ")" << std::endl;
-					found = true;
-				}
-			}
-
-			// Stop if no valid indices were found in this layer
-			if (!found) break;
-		}
-
-		std::cout << std::endl;
-	}
-};
-
 int main( int argc, char* args[] )
 {
-	Traverse::traverseConcentricCircles(2, 4);
-
-	return 0;
-
 	//
 	// 1. lépés: inicializáljuk az SDL-t
 	//
