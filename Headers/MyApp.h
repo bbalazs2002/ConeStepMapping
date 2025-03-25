@@ -72,6 +72,7 @@ protected:
 	GLuint m_programSkyboxID = 0;		// Skybox shaders
 	GLuint m_programConemapID = 0;		// Conemap generation
 	GLuint m_programModelID = 0;		// Drawing models
+	GLuint m_programPointsID = 0;		// Drawing points
 
 	// Light source
 	glm::vec3 m_lightPos = glm::vec3(0, 1., 0);
@@ -116,20 +117,32 @@ protected:
 	// rendering methods
 	void RenderConemap();
 	void DrawAxes();
+	void DrawPoints();
 	void RenderModels();
 	void RenderSkybox();
 
+	// buffers
+	GLuint m_pointsSSBO = 0;
+	void InitSSBOs();
+	void CleanSSBOs();
+	void SetPointsBase();
+
 	// ImGui stuff
+	bool m_showPoints = true;
+	float m_pointsBase[3]{ 2.2f, .5f, 0 };
+	float m_pointsDir[3]{ 0, 0, 1.f };
 	bool m_displayNonConverged = false;
 	bool m_discardFragments = true;
 	float m_epsilon = 0.01;
 	int m_activeHeightMap = 0;
+	float m_modelNormalMult = 0.1;
 	int m_maxSteps = 50;
 	std::vector<std::string> m_heightMaps{
 		"Assets/heightmap_dot.png",
 		"Assets/spikes.png",
 		"Assets/hemisphere.png",
 		"Assets/cone.jpg",
+		"Assets/Earth-heightmap-small.png",
 		"Assets/circles-height-map.jpg",
 		"Assets/rocks-heightmap.jpg"
 	};

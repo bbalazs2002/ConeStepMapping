@@ -48,6 +48,13 @@ void CMyApp::InitShaders()
 		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Models/Frag_Model.frag")
 		.Link();
 
+	// Drawing points
+	m_programPointsID = glCreateProgram();
+	ProgramBuilder{ m_programPointsID }
+		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Points/Vert_Points.vert")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Points/Frag_Points.frag")
+		.Link();
+
 	// Conemap generation
 	m_programConemapID = glCreateProgram();
 	ProgramBuilder{ m_programConemapID }
@@ -171,6 +178,12 @@ void CMyApp::InitModels() {
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-32.obj"));
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-64.obj"));
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/cube.obj"));
+		/*
+		m_models.push_back(new Model(
+			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::scale(glm::vec3(10.0f, 10.0f, 10.0f)),
+			CreateGLObjectFromMesh(SuzanneCPU, vertexAttribList), false
+		));
+		*/
 
 		// SQUARE
 		MeshObject<VertexMergedNorm> ObjectCPU = {
@@ -182,7 +195,7 @@ void CMyApp::InitModels() {
 			},
 			{
 				0,1,2,
-				0,2,3
+				// 0,2,3
 			}
 		};
 
@@ -319,6 +332,29 @@ void CMyApp::CleanSkyboxTexture() {
 	glDeleteTextures(1, &m_skyboxTextureID);
 }
 
+void CMyApp::InitSSBOs() {
+	glGenBuffers(1, &m_pointsSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_pointsSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * 128, nullptr, GL_DYNAMIC_DRAW);
+	glm::vec4 attr{ 2.f, 0, 0, 0 };
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4), &attr);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_pointsSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	SetPointsBase();
+}
+
+void CMyApp::SetPointsBase() {
+	std::vector<glm::vec4> Points{
+		glm::vec4{m_pointsBase[0], m_pointsBase[1], m_pointsBase[2], 1},
+		glm::vec4{m_pointsBase[0] + m_pointsDir[0], m_pointsBase[1] + m_pointsDir[1], m_pointsBase[2] + m_pointsDir[2], 1}
+	};
+	glNamedBufferSubData(m_pointsSSBO, sizeof(glm::vec4), sizeof(glm::vec4) * 2, Points.data());
+}
+
+void CMyApp::CleanSSBOs() {
+	glDeleteBuffers(1, &m_pointsSSBO);
+}
+
 bool CMyApp::Init()
 {
 	SetupDebugCallback();
@@ -330,6 +366,7 @@ bool CMyApp::Init()
 	InitShaders();
 	InitTexture();
 	InitGeometry();
+	InitSSBOs();
 
 	//
 	// Other
@@ -379,6 +416,7 @@ void CMyApp::Clean()
 	CleanShaders();
 	CleanGeometry();
 	CleanTexture();
+	CleanSSBOs();
 }
 
 void CMyApp::Update(const SUpdateInfo& updateInfo)
@@ -399,6 +437,34 @@ void CMyApp::DrawAxes()
 	glDisable(GL_DEPTH_TEST);
 	
 	glDrawArrays(GL_LINES, 0, 6);
+	glUseProgram(0);
+	glEnable(GL_DEPTH_TEST);
+}
+
+void CMyApp::DrawPoints() {
+	int n = 0;
+	void* ptr = glMapNamedBuffer(m_pointsSSBO, GL_READ_ONLY);
+	if (ptr) {
+		glm::vec4* data = static_cast<glm::vec4*>(ptr);
+		n = (int) data[0].x;
+		glUnmapNamedBuffer(m_pointsSSBO);
+	}
+
+	// std::cout << "n = " << n << std::endl;
+
+	if (n == 0) {
+		return;
+	}
+
+	glUseProgram(m_programPointsID);
+
+	glProgramUniformMatrix4fv(m_programAxesID, ul(m_programAxesID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
+
+	// We always want to see it, regardless of whether there is an object in front of it
+	glDisable(GL_DEPTH_TEST);
+
+	glPointSize(5.f);
+	glDrawArrays(GL_POINTS, 0, n);
 	glUseProgram(0);
 	glEnable(GL_DEPTH_TEST);
 }
@@ -434,6 +500,8 @@ void CMyApp::RenderModels() {
 			// uniform float lightIntensity = 1.;
 			glUniform1i(ul(progID, "displayNonConverged"), m_displayNonConverged);
 			glUniform1f(ul(progID, "epsilon"), m_epsilon);
+
+			glUniform1f(ul(progID, "modelNormalMult"), m_modelNormalMult);
 		}
 
 		// texture
@@ -494,10 +562,33 @@ void CMyApp::Render()
 	RenderModels();
 	// RenderSkybox();
 	DrawAxes();
+	if (m_showPoints) {
+		DrawPoints();
+	}
 }
 
 void CMyApp::RenderGUI()
 {
+	ImGui::Begin("Debug options");
+	{
+		ImGui::Checkbox("Show debug", &m_showPoints);
+		ImGui::SliderFloat3("Base", m_pointsBase, -10.0f, 10.0f);
+		ImGui::SliderFloat3("Direction", m_pointsDir, -1.0f, 1.0f);
+
+		if (m_pointsDir[0] == 0 && m_pointsDir[1] == 0 && m_pointsDir[2] == 0) {
+			m_pointsDir[1] = 1.f;
+		}
+		else {
+			float l = sqrt(pow(m_pointsDir[0], 2) + pow(m_pointsDir[1], 2) + pow(m_pointsDir[2], 2));
+			m_pointsDir[0] = m_pointsDir[0] / l;
+			m_pointsDir[1] = m_pointsDir[1] / l;
+			m_pointsDir[2] = m_pointsDir[2] / l;
+		}
+
+		SetPointsBase();
+	}
+	ImGui::End();
+
 	ImGui::Begin("Options window");
 	{
 		ImGui::Text("Render resolution %dx%d", m_width, m_height);
@@ -540,7 +631,8 @@ void CMyApp::RenderGUI()
 		}
 
 		ImGui::SliderInt("max steps", &m_maxSteps, 1, 100);
-		ImGui::SliderFloat("epsilon", &m_epsilon, 0.0, 1.0, "%.33f");
+		ImGui::SliderFloat("epsilon", &m_epsilon, 0.0, 1.0, "%.3f");
+		ImGui::SliderFloat("modelNormalMult", &m_modelNormalMult, 0.1, 2.0, "%.3f");
 		ImGui::Checkbox("show non-converge", &m_displayNonConverged);
 		ImGui::Checkbox("discard fragments", &m_discardFragments);
 	}

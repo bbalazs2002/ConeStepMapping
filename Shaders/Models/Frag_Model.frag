@@ -3,11 +3,12 @@
 //
 // VARIABLES IN THE PIPELINE
 //
-in vec4 gs_out_tex;
+in vec3 gs_out_tex;
 in vec3 gs_out_norm;
-in vec4 gs_out_pos;
+in vec3 gs_out_merged;
+in vec3 gs_out_pos;
 in mat4 gs_out_M;
-in vec4 gs_out_Meye;
+in vec3 gs_out_Meye;
 in mat3x2 gs_out_triangle;
 
 out vec4 fs_out_col;
@@ -24,7 +25,7 @@ uniform sampler2D coneMap;
 uniform vec2 HMres;     // height map resolution (w, h)
 uniform vec2 HMres_r;   // reciprical of the height map resolution (1/w, 1/h)
 uniform float relax = 1.;
-uniform int maxSteps = 100;
+uniform int maxSteps = 50;
 uniform vec3 camPos;
 uniform bool discardFragments = true;
 uniform vec3 lightDir = vec3(0,-1.,0);
@@ -137,8 +138,10 @@ HMapIntersection findIntersection_parallaxMapping(vec2 u, vec2 u2)
 HMapIntersection findIntersection_linearSearch(vec3 u1, vec3 u2)
 {
     HMapIntersection ret = INIT_INTERSECTION;
-    vec3 v = normalize(u2 - u1);
-    for (float t = 0.; t <= 1.0; t += .01) {
+    vec3 v = u2 - u1;
+
+    int stepCount;
+    for (float t = 0.; t <= 1.1; t += 1./64.) {
         vec3 u = u1 + t * v;
 
         if (u.x > 1. || u.x < 0. || u.y > 1. || u.y < 0.) {
@@ -188,10 +191,10 @@ HMapIntersection findIntersection_coneStepMapping(vec2 u, vec2 u2)
 
 HMapIntersection findIntersection_coneStepMapping_new(vec3 u1, vec3 u2) {
     vec3 v = normalize(u2 - u1);            // direction vector from u1 to u2
-    float tgb = length(v.xy) / (-v.z);    // tangent between v and -normal
+    float tgb = length(v.xy) / (-v.z);      // tangent between v and -normal
 
     // initial data
-    vec3 ui = u1;
+    vec3 ui = u1 + 0.001 * v;
     vec2 tex = getHC_texture(ui.xy);        // texture at the initial point
     vec3 ai = vec3(ui.xy, tex.x);           // vertex of the cone
     float t = 0.;                           // t parameter of the intersection point
@@ -200,14 +203,19 @@ HMapIntersection findIntersection_coneStepMapping_new(vec3 u1, vec3 u2) {
     int stepCount = 0;
     do {
         // evaluate current point
-        if (length(dif * HMres) < 1. || ui.z < ai.z || ui.x < 0 || ui.x > 1 || ui.y < 0 || ui.y > 1) {
-        // if (lenui < 1. || ui.x < 0 || ui.x > 1. || ui.y < 0 || ui.y > 1.) {
-            // found intersection
-            return HMapIntersection(ui.xy, t, 0, true);
+        if (length(dif * HMres) < 0.1 || dot(u2-ui,v)<0) {
+            // found intersection or ui is out of the cube
+            return HMapIntersection(ui.xy, t, 0, dot(u2-ui,v)>=0);
         }
 
         // take step
         float tga = tex.y;
+        if (tgb + tga == 0) {                           // ray is parallel to cone
+            HMapIntersection val = INIT_INTERSECTION;
+            val.t = t;
+            return val;
+        }
+
         float hi = (tgb * (ui.z - ai.z)) / (tgb + tga);
         float xi = ai.z + hi;
         float ti = (xi - ui.z) / v.z;
@@ -224,7 +232,9 @@ HMapIntersection findIntersection_coneStepMapping_new(vec3 u1, vec3 u2) {
         ++stepCount;
     } while(stepCount <= maxSteps);
    
-    return INIT_INTERSECTION;
+    HMapIntersection val = INIT_INTERSECTION;
+    val.t = t;
+    return val;
 }
 
 float crossProd(vec2 p1, vec2 p2, vec2 p3) {
@@ -251,22 +261,20 @@ void main() {
 
     vec3 col = vec3(.5);
 
-    vec4 u1 = gs_out_tex; // original texcoords
-    vec4 p = gs_out_pos;  // fragment world pos
+    vec3 u1 = gs_out_tex; // original texcoords
+    vec3 p = gs_out_pos;  // fragment world pos
 
     // camera position in tangent space
-    vec4 Meye = gs_out_Meye;
+    vec3 Meye = gs_out_Meye;
 
     // direction of ray in tangent space
-    vec4 v = normalize(u1 - Meye);
-    v.w = 1.;
+    vec3 v = normalize(u1 - Meye);
 
     /*
     fs_out_col = abs(v);
     return;
     */
 
-    vec4 u2;
 
     float t;
     if (-epsilon < v.z && v.z < epsilon) {      // the ray is perpendicular to the planes
@@ -279,10 +287,11 @@ void main() {
     }
 
     // texcoords where the camera ray intersects the bottom/top plane
-    u2 = u1 + t * v;
+    vec3 u2 = u1 + t * v;
 
     
-    // fs_out_col = vec4((u2 + 1.) * .5);
+    // fs_out_col = vec4((u2 + 1.) * .5, 1);
+    // fs_out_col = vec4(1);
     // return;
     
 
@@ -290,7 +299,7 @@ void main() {
     // HMapIntersection I = findIntersection_bumpMapping(u, u2);
     // HMapIntersection I = findIntersection_linearSearch(u1.xyz, u2.xyz);
     // HMapIntersection I = findIntersection_coneStepMapping(u1.xy, u2.xy);
-    HMapIntersection I =  findIntersection_coneStepMapping_new(u1.xyz, u2.xyz);
+    HMapIntersection I =  findIntersection_coneStepMapping_new(u1, u2);
 
     // vec2 u3 = refineIntersection_linearApprox(I, u, u2);
     vec2 u3 = I.uv; // no refine function applied
@@ -298,17 +307,6 @@ void main() {
     
     // fs_out_col = vec4(I.t);
     // return;
-    
-
-    // intersection is outside of the object
-    if (!isPointInTriangle(u3, gs_out_triangle[0], gs_out_triangle[1], gs_out_triangle[2]))
-    {
-        if (discardFragments) {
-            discard;
-        }
-        fs_out_col = vec4(0, 1, 0, 1);
-        return;
-    }
     
     /*
     // fetch the final albedo color
@@ -321,16 +319,29 @@ void main() {
     col.rgb *= diffuse;
     */
 
-    col = texture(texImage, u3).xyz;
+    col = texture(coneMap, u3).xyz;
     // col = vec3(1,1,0);
     // col = vec3(I.t);
+    bool inTri = isPointInTriangle(u3, gs_out_triangle[0], gs_out_triangle[1], gs_out_triangle[2]);
+    fs_out_col = vec4(I.wasHit,inTri,0,1);
 
+    return;
     if (!I.wasHit) {
         if (displayNonConverged) {
             col.rgb = vec3(1,0,1);
         } else {
             discard;
         }
+    }
+
+    // intersection is outside of the object
+    if (!inTri)
+    {
+        if (discardFragments) {
+            discard;
+        }
+        fs_out_col = vec4(0, 1, 0, 1);
+        return;
     }
     
     fs_out_col = vec4(col, 1.);

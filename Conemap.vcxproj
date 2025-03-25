@@ -102,6 +102,7 @@
     <ClInclude Include="includes\ProgramBuilder.h" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="Assets\Earth-heightmap-small.png" />
     <Image Include="Assets\heightmap_dot.png" />
     <Image Include="Assets\lab_xneg.png" />
     <Image Include="Assets\lab_xpos.png" />
@@ -139,6 +140,8 @@
     <None Include="Shaders\Models\Geom_Model.geom" />
     <None Include="Shaders\Models\Geom_Model_old.geom" />
     <None Include="Shaders\Models\Vert_Model.vert" />
+    <None Include="Shaders\Points\Frag_Points.frag" />
+    <None Include="Shaders\Points\Vert_Points.vert" />
     <None Include="Shaders\Skybox\Frag_skybox_skeleton.frag" />
     <None Include="Shaders\Skybox\Vert_skybox.vert" />
     <Text Include="Shaders\Vert_PosNormTex.vert">

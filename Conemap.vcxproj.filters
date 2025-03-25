@@ -114,6 +114,9 @@
     <Image Include="Assets\spikes.png">
       <Filter>Assets</Filter>
     </Image>
+    <Image Include="Assets\Earth-heightmap-small.png">
+      <Filter>Assets</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Axes\Frag_PosCol.frag">
@@ -145,6 +148,12 @@
     </None>
     <None Include="Shaders\Models\Geom_Model_old.geom">
       <Filter>Shaders\Models</Filter>
+    </None>
+    <None Include="Shaders\Points\Vert_Points.vert">
+      <Filter>Shaders\Points</Filter>
+    </None>
+    <None Include="Shaders\Points\Frag_Points.frag">
+      <Filter>Shaders\Points</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
@@ -200,6 +209,9 @@
     </Filter>
     <Filter Include="Shaders\Models">
       <UniqueIdentifier>{00816edf-bbb7-462c-97e7-3ca45691a18a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders\Points">
+      <UniqueIdentifier>{bb056941-0079-493f-95ca-2cae444d7822}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>
