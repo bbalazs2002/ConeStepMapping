@@ -134,9 +134,11 @@ protected:
 	bool m_displayNonConverged = false;
 	bool m_discardFragments = true;
 	float m_epsilon = 0.01;
-	int m_activeHeightMap = 0;
 	float m_modelNormalMult = 0.1;
 	int m_maxSteps = 50;
+	bool m_showAxes = true;
+
+	int m_activeHeightMap = 0;
 	std::vector<std::string> m_heightMaps{
 		"Assets/heightmap_dot.png",
 		"Assets/spikes.png",
@@ -145,5 +147,11 @@ protected:
 		"Assets/Earth-heightmap-small.png",
 		"Assets/circles-height-map.jpg",
 		"Assets/rocks-heightmap.jpg"
+	};
+
+	int m_activeTechnique = 0;
+	std::vector<std::string> m_rayMarchingTechniques{
+		"Linear search",
+		"Cone step mapping"
 	};
 };

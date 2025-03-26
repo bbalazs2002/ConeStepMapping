@@ -9,6 +9,8 @@ in vec3 gs_out_merged;
 in vec3 gs_out_pos;
 in mat4 gs_out_M;
 in vec3 gs_out_Meye;
+in mat4 gs_out_T;
+in vec3 gs_out_Teye;
 in mat3x2 gs_out_triangle;
 
 out vec4 fs_out_col;
@@ -34,6 +36,8 @@ uniform bool displayNonConverged = false;
 uniform float epsilon = 0.0;
 
 uniform int refine_steps = 1;
+
+uniform int rayMarchingTechnique = 0;
 
 //
 // INTERSECTION DATA
@@ -249,64 +253,61 @@ bool isPointInTriangle(vec2 p, vec2 v0, vec2 v1, vec2 v2) {
     return (c0 >= 0.0 && c1 >= 0.0 && c2 >= 0.0) || (c0 <= 0.0 && c1 <= 0.0 && c2 <= 0.0);
 }
 
+// unit prism intersection
+bool intersectUnitPrism(vec3 p0, vec3 v, out float tNear, out float tFar) {     // p0, v in unit prism space
+    float n = -1e10, f = 1e10; // near, far
+
+    vec3 t0 = -p0 / v; // a solution for each cardinal normal
+    if (v.x > 0.) { n = max(n, t0.x); } else { f = min(f, t0.x); }
+    if (v.y > 0.) { n = max(n, t0.y); } else { f = min(f, t0.y); }
+    if (v.z > 0.) { n = max(n, t0.z); } else { f = min(f, t0.z); }
+
+    vec3 q = vec3(1, 1, 0) - p0;
+    float t1 = q.y / v.y;
+    if (v.y < 0.) { n = max(n, t1); } else { f = min(f, t1); }
+    float t2 = (q.x + q.z) / (v.x + v.z);
+    if (v.x + v.z < 0.) { n = max(n, t2); } else { f = min(f, t2); }
+
+    tNear = n;
+    tFar = f;
+    return n < f;
+}
+
 //
 // MAIN FUNCTION
 //
 void main() {
-
-    /*
-    fs_out_col = gs_out_tex;
-    return;
-    */
-
     vec3 col = vec3(.5);
 
-    vec3 u1 = gs_out_tex; // original texcoords
-    vec3 p = gs_out_pos;  // fragment world pos
+    vec3 u1 = gs_out_tex;           // original texcoords
+    vec3 p = gs_out_pos;            // fragment world pos
 
-    // camera position in tangent space
-    vec3 Meye = gs_out_Meye;
-
-    // direction of ray in tangent space
-    vec3 v = normalize(u1 - Meye);
-
-    /*
-    fs_out_col = abs(v);
-    return;
-    */
-
-
-    float t;
-    if (-epsilon < v.z && v.z < epsilon) {      // the ray is perpendicular to the planes
-        fs_out_col = vec4(1,0,0,1);
-        return;
-    } else if (v.z > 0) {                       // the ray intersects the bottom plane first
-        t = (1 - u1.z) / v.z;
-    } else {                                    // the ray intersects the top plane first
-        t = -u1.z / v.z;
-    }
+    vec3 Meye = gs_out_Meye;        // camera position in tangent space
+    vec3 v = normalize(u1 - Meye);  // direction of ray in tangent space
 
     // texcoords where the camera ray intersects the bottom/top plane
-    vec3 u2 = u1 + t * v;
-
+    float tNear = 0;
+    float tFar = 0;
+    if (!intersectUnitPrism(gs_out_Teye, (gs_out_T * vec4(gs_out_pos, 1)).xyz - gs_out_Teye, tNear, tFar)) {
+        fs_out_col = vec4(0, 1, 1, 1);
+        return;
+    }
+    vec3 u2 = u1 + tFar * v;
     
-    // fs_out_col = vec4((u2 + 1.) * .5, 1);
-    // fs_out_col = vec4(1);
-    // return;
-    
-
     // find the intersection with the height map
+    HMapIntersection I = INIT_INTERSECTION;
+    if (rayMarchingTechnique == 0) {
+        I = findIntersection_linearSearch(u1.xyz, u2.xyz);
+    } else if (rayMarchingTechnique == 1) {
+        I =  findIntersection_coneStepMapping_new(u1, u2);
+    }
     // HMapIntersection I = findIntersection_bumpMapping(u, u2);
     // HMapIntersection I = findIntersection_linearSearch(u1.xyz, u2.xyz);
     // HMapIntersection I = findIntersection_coneStepMapping(u1.xy, u2.xy);
-    HMapIntersection I =  findIntersection_coneStepMapping_new(u1, u2);
+    // HMapIntersection I =  findIntersection_coneStepMapping_new(u1, u2);
 
     // vec2 u3 = refineIntersection_linearApprox(I, u, u2);
     vec2 u3 = I.uv; // no refine function applied
-
-    
-    // fs_out_col = vec4(I.t);
-    // return;
     
     /*
     // fetch the final albedo color
@@ -318,14 +319,13 @@ void main() {
     float diffuse = lightIntensity * clamp(dot(-normalize(lightDir), norm), 0, 1.);
     col.rgb *= diffuse;
     */
-
     col = texture(coneMap, u3).xyz;
-    // col = vec3(1,1,0);
-    // col = vec3(I.t);
-    bool inTri = isPointInTriangle(u3, gs_out_triangle[0], gs_out_triangle[1], gs_out_triangle[2]);
-    fs_out_col = vec4(I.wasHit,inTri,0,1);
 
-    return;
+    bool inTri = isPointInTriangle(u3, gs_out_triangle[0], gs_out_triangle[1], gs_out_triangle[2]);
+
+    // fs_out_col = vec4(I.wasHit,inTri,0,1);
+
+    // return;
     if (!I.wasHit) {
         if (displayNonConverged) {
             col.rgb = vec3(1,0,1);

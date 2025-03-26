@@ -13,7 +13,7 @@ uniform mat4 viewProj;
 const vec3 colors[] = vec3[](
 	vec3(1, 0, 0),
 	vec3(0, 1, 0),
-	vec3(0, 0, 1)
+	vec3(1, 0, 1)
 );
 
 void main()

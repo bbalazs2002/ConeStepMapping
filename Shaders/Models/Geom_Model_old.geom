@@ -15,9 +15,11 @@ out vec3 gs_out_tex;
 out vec3 gs_out_norm;
 out vec3 gs_out_merged;
 out vec3 gs_out_pos;
-out mat4 gs_out_M;
-out vec3 gs_out_Meye;
-out mat3x2 gs_out_triangle;
+out mat4 gs_out_M;              // transformation from scene space to texture space
+out vec3 gs_out_Meye;           // cam position in texture space
+out mat4 gs_out_T;              // transformation from scene space to unit prism space
+out vec3 gs_out_Teye;           // cam position in unit prism space
+out mat3x2 gs_out_triangle;     // base triangle verteces in texture space
 
 uniform mat4 world;
 uniform mat4 viewProj;
@@ -64,26 +66,6 @@ bool rayIntersectsTriangle(Ray ray, Triangle tri, out float t) {
     return t >= 0.0;  // Intersection must be in the positive direction
 }
 
-bool rayIntersectsPrism2(Ray ray, out vec3 entry, out vec3 exit) {
-    vec3 p0 = ray.origin;
-    vec3 v = ray.direction;
-    float near = -1e10, far = 1e10;
-    float p0v = dot(p0,v);
-    // q0 = vec3(0,0,0) n = vec3(-1,0,0)
-    // t = dot(p0-q0) / dot(v,n);
-    if(v.x<0) near = max(near,-p0v/v.x); else far = min(far,-p0v/v.x);
-    if(v.y<0) near = max(near,-p0v/v.y); else far = min(far,-p0v/v.y);
-    if(v.z<0) near = max(near,-p0v/v.z); else far = min(far,-p0v/v.z);
-    
-    // q0 = vec3(1,1,0), n = vec3(0,0,1); n = vec3(1,1,0)
-    float p1v = dot(p0-vec3(1,1,0),v);
-    if(v.z>0) near = max(near,p1v/v.z); else far = min(far,p1v/v.z);
-    if(v.x+v.y>0) near = max(near,p1v/v.z); else far = min(far,p1v/v.z);
-    
-    return near < far;
-}
-
-
 bool rayIntersectsPrism(Ray ray, Triangle faces[8], out vec3 entry, out vec3 exit) {
     float tMin = 1e10, tMax = -1e10;
     bool hasEntry = false, hasExit = false;
@@ -108,7 +90,7 @@ bool rayIntersectsPrism(Ray ray, Triangle faces[8], out vec3 entry, out vec3 exi
     return hasEntry && hasExit;
 }
 
-int pcount = 3;
+int pcount = 2;
 vec2 getHC_texture(vec2 uv)
 {
     return texture(coneMap, uv);    // .r is the height; .g is the tangent of the cone
@@ -182,9 +164,29 @@ void findIntersection_coneStepMapping_new(vec3 u1, vec3 u2, mat4 invM) {
     } while(stepCount <= maxSteps);
 }
 
+// unit prism intersection
+bool intersectUnitPrism(vec3 p0, vec3 v, out float tNear, out float tFar) {     // p0, v in unit prism space
+    float n = -1e10, f = 1e10; // near, far
+
+    vec3 t0 = -p0 / v; // a solution for each cardinal normal
+    if (v.x > 0.) { n = max(n, t0.x); } else { f = min(f, t0.x); }
+    if (v.y > 0.) { n = max(n, t0.y); } else { f = min(f, t0.y); }
+    if (v.z > 0.) { n = max(n, t0.z); } else { f = min(f, t0.z); }
+
+    vec3 q = vec3(1, 1, 0) - p0;
+    float t1 = q.y / v.y;
+    if (v.y < 0.) { n = max(n, t1); } else { f = min(f, t1); }
+    float t2 = (q.x + q.z) / (v.x + v.z);
+    if (v.x + v.z < 0.) { n = max(n, t2); } else { f = min(f, t2); }
+
+    tNear = n;
+    tFar = f;
+    return n < f;
+}
+
 void main()
 {
-    // p
+    // p - scene space positions
     vec4 verteces[] = {
         world * gl_in[0].gl_Position,                                                     // a - 0
         world * gl_in[1].gl_Position,                                                     // b - 1
@@ -194,7 +196,7 @@ void main()
         world * (gl_in[2].gl_Position + vec4(vs_out_merged[2] * modelNormalMult, 0.0))    // f - 5
     };
 
-    // u
+    // u - texture space positions
     vec4 texPos[] = {
         vec4(vs_out_tex[0], 0, 1),
         vec4(vs_out_tex[1], 0, 1),
@@ -202,6 +204,16 @@ void main()
         vec4(vs_out_tex[0], 1, 1),
         vec4(vs_out_tex[1], 1, 1),
         vec4(vs_out_tex[2], 1, 1)
+    };
+
+    // v - unit prism space positions
+    vec4 uprismPos[] = {
+        vec4(0, 0, 0, 1),
+        vec4(1, 0, 0, 1),
+        vec4(0, 0, 1, 1),
+        vec4(0, 1, 0, 1),
+        vec4(1, 1, 0, 1),
+        vec4(0, 1, 1, 1)
     };
 
     gs_out_triangle = mat3x2(
@@ -223,10 +235,42 @@ void main()
         verteces[2],
         verteces[3]
     };
-    mat4 M = u * inverse(p);
+    mat4 v = {
+        uprismPos[0],
+        uprismPos[1],
+        uprismPos[2],
+        uprismPos[3]
+    };
+
+    mat4 invP = inverse(p);
+    mat4 M = u * invP;          // transformation from scene to texture
+    mat4 T = v * invP;          // transformation from scene to unit prism
+
+    mat4 invM = inverse(M);
+    mat4 invT = inverse(T);
+
+    // find entry and exit points
+    vec4 p0 = T * pos[1];
+    vec4 p1 = T * pos[2];
+    vec3 direction = normalize((p1 - p0).xyz);
+    float tNear = 0;
+    float tFar = 0;
+    if (intersectUnitPrism(p0.xyz, direction, tNear, tFar)) {
+        ++pcount;
+        pos[3] = invT * (p0 +  vec4(direction * tNear, 0));   
+        ++pcount;
+        pos[4] = invT * (p0 + vec4(direction * tFar, 0));
+    }
+
+    // draw unit prism
+    /*
+    for (int i = 0; i < 6; ++i) {
+        pos[++pcount] = T * verteces[i]; // uprismPos[i];
+    }
+    */
 
     // find intersections for debug
-    mat4 invM = inverse(M);
+    /*
     vec3 entry;
     vec3 exit;
     Triangle faces[8];
@@ -239,15 +283,20 @@ void main()
     faces[6] = Triangle(verteces[2].xyz, verteces[0].xyz, verteces[5].xyz);
     faces[7] = Triangle(verteces[0].xyz, verteces[3].xyz, verteces[2].xyz);
     if(rayIntersectsPrism(Ray(pos[1].xyz, normalize(pos[2].xyz - pos[1].xyz)), faces, entry, exit)) {
+        ++pcount;
         // findIntersection_linearSearch((M * vec4(entry, 1)).xyz, (M * vec4(exit, 1)).xyz, invM);
-        findIntersection_coneStepMapping_new((M * vec4(entry, 1)).xyz, (M * vec4(exit, 1)).xyz, invM);
-        pos[0] = vec4(2 + pcount, 0, 0, 0);
-        // pos[3] = vec4(entry, 1);
+        // findIntersection_coneStepMapping_new((M * vec4(entry, 1)).xyz, (M * vec4(exit, 1)).xyz, invM);
+        pos[4] = vec4(entry, 1);
         // pos[4] = vec4(exit, 1);
     }
+    */
+
+    pos[0] = vec4(pcount, 0, 0, 0);
 
     gs_out_M = M;
     gs_out_Meye = (M * vec4(camPos, 1)).xyz;
+    gs_out_T = T;
+    gs_out_Teye = (T * vec4(camPos, 1)).xyz;
 
     //
     // TRIANGLE STRIP

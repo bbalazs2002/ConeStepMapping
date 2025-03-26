@@ -178,6 +178,7 @@ void CMyApp::InitModels() {
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-32.obj"));
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-64.obj"));
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/cube.obj"));
+		
 		/*
 		m_models.push_back(new Model(
 			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::scale(glm::vec3(10.0f, 10.0f, 10.0f)),
@@ -195,10 +196,10 @@ void CMyApp::InitModels() {
 			},
 			{
 				0,1,2,
-				// 0,2,3
+				0,2,3
 			}
 		};
-
+		
 		m_models.push_back(new Model(
 			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::scale(glm::vec3(10.0f, 10.0f, 10.0f)),
 			CreateGLObjectFromMesh(ObjectCPU, vertexAttribList), false
@@ -502,6 +503,7 @@ void CMyApp::RenderModels() {
 			glUniform1f(ul(progID, "epsilon"), m_epsilon);
 
 			glUniform1f(ul(progID, "modelNormalMult"), m_modelNormalMult);
+			glUniform1i(ul(progID, "rayMarchingTechnique"), m_activeTechnique);
 		}
 
 		// texture
@@ -561,7 +563,9 @@ void CMyApp::Render()
 
 	RenderModels();
 	// RenderSkybox();
-	DrawAxes();
+	if (m_showAxes) {
+		DrawAxes();
+	}
 	if (m_showPoints) {
 		DrawPoints();
 	}
@@ -569,30 +573,62 @@ void CMyApp::Render()
 
 void CMyApp::RenderGUI()
 {
-	ImGui::Begin("Debug options");
+	ImGui::Begin("Debug window");
 	{
+
+		float pb[3]{ m_pointsBase[0], m_pointsBase[1], m_pointsBase[2] };
+		float pd[3]{ m_pointsDir[0], m_pointsDir[1], m_pointsDir[2] };
+
 		ImGui::Checkbox("Show debug", &m_showPoints);
 		ImGui::SliderFloat3("Base", m_pointsBase, -10.0f, 10.0f);
 		ImGui::SliderFloat3("Direction", m_pointsDir, -1.0f, 1.0f);
+		if (ImGui::Button("To camera")) {
+			glm::vec3 e = m_camera.GetEye();
+			m_pointsBase[0] = e.x;
+			m_pointsBase[1] = e.y;
+			m_pointsBase[2] = e.z;
 
-		if (m_pointsDir[0] == 0 && m_pointsDir[1] == 0 && m_pointsDir[2] == 0) {
-			m_pointsDir[1] = 1.f;
-		}
-		else {
-			float l = sqrt(pow(m_pointsDir[0], 2) + pow(m_pointsDir[1], 2) + pow(m_pointsDir[2], 2));
-			m_pointsDir[0] = m_pointsDir[0] / l;
-			m_pointsDir[1] = m_pointsDir[1] / l;
-			m_pointsDir[2] = m_pointsDir[2] / l;
+			glm::vec3 a = m_camera.GetAt() - e;
+			m_pointsDir[0] = a.x;
+			m_pointsDir[1] = a.y;
+			m_pointsDir[2] = a.z;
 		}
 
-		SetPointsBase();
+		if (
+			pb[0] != m_pointsBase[0] || pb[1] != m_pointsBase[1] || pb[2] != m_pointsBase[2] ||
+			pd[0] != m_pointsDir[0] || pd[1] != m_pointsDir[1] || pd[2] != m_pointsDir[2]
+		) {	// save values to buffer if changed
+			if (m_pointsDir[0] == 0 && m_pointsDir[1] == 0 && m_pointsDir[2] == 0) {
+				m_pointsDir[1] = 1.f;
+			}
+			else {
+				float l = sqrt(pow(m_pointsDir[0], 2) + pow(m_pointsDir[1], 2) + pow(m_pointsDir[2], 2));
+				m_pointsDir[0] = m_pointsDir[0] / l;
+				m_pointsDir[1] = m_pointsDir[1] / l;
+				m_pointsDir[2] = m_pointsDir[2] / l;
+			}
+
+			SetPointsBase();
+		}
+
 	}
 	ImGui::End();
 
 	ImGui::Begin("Options window");
 	{
 		ImGui::Text("Render resolution %dx%d", m_width, m_height);
+		ImGui::Checkbox("Show axes", &m_showAxes);
 
+		// ray marching technique
+		if (ImGui::BeginCombo("Ray marching technique", m_rayMarchingTechniques[m_activeTechnique].c_str()))
+		{
+			for (int i = 0; i < m_rayMarchingTechniques.size(); ++i) {
+				if (ImGui::Selectable(m_rayMarchingTechniques[i].c_str(), m_activeTechnique == i)) {
+					m_activeTechnique = i;
+				}
+			}
+			ImGui::EndCombo();
+		}
 
 		// heightmap
 		int hmapID = m_activeHeightMap;
