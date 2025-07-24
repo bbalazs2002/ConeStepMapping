@@ -72,7 +72,8 @@ protected:
 	GLuint m_programSkyboxID = 0;		// Skybox shaders
 	GLuint m_programConemapID = 0;		// Conemap generation
 	GLuint m_programModelID = 0;		// Drawing models
-	GLuint m_programPointsID = 0;		// Drawing points
+	GLuint m_programPointsID = 0;		// Drawing points for debug
+	GLuint m_programConesID = 0;		// Drawing cones for debug
 
 	// Light source
 	glm::vec3 m_lightPos = glm::vec3(0, 1., 0);
@@ -117,26 +118,35 @@ protected:
 	// rendering methods
 	void RenderConemap();
 	void DrawAxes();
-	void DrawPoints();
+	void RenderDebug();
 	void RenderModels();
 	void RenderSkybox();
 
 	// buffers
 	GLuint m_pointsSSBO = 0;
+	GLuint m_debugSSBO = 0;
 	void InitSSBOs();
 	void CleanSSBOs();
 	void SetPointsBase();
 
+	// time querry
+	GLuint m_timeQueryID;
+
 	// ImGui stuff
-	bool m_showPoints = true;
+	bool m_showPoints = false;
 	float m_pointsBase[3]{ 2.2f, .5f, 0 };
 	float m_pointsDir[3]{ 0, 0, 1.f };
 	bool m_displayNonConverged = false;
 	bool m_discardFragments = true;
 	float m_epsilon = 0.01;
-	float m_modelNormalMult = 0.1;
+	float m_modelNormalMult = 1.f;
 	int m_maxSteps = 50;
 	bool m_showAxes = true;
+	bool m_interpolation = false;
+	bool m_showSteps = true;
+	bool m_showEnterExit = true;
+	bool m_showFlags = false;
+	bool m_showCones = true;
 
 	int m_activeHeightMap = 0;
 	std::vector<std::string> m_heightMaps{
@@ -145,11 +155,10 @@ protected:
 		"Assets/hemisphere.png",
 		"Assets/cone.jpg",
 		"Assets/Earth-heightmap-small.png",
-		"Assets/circles-height-map.jpg",
-		"Assets/rocks-heightmap.jpg"
+		"Assets/desert-heightmap.jpg"
 	};
 
-	int m_activeTechnique = 0;
+	int m_activeTechnique = 1;
 	std::vector<std::string> m_rayMarchingTechniques{
 		"Linear search",
 		"Cone step mapping"

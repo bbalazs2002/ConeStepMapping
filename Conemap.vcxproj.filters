@@ -117,6 +117,9 @@
     <Image Include="Assets\Earth-heightmap-small.png">
       <Filter>Assets</Filter>
     </Image>
+    <Image Include="Assets\desert-heightmap.jpg">
+      <Filter>Assets</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Axes\Frag_PosCol.frag">
@@ -149,11 +152,20 @@
     <None Include="Shaders\Models\Geom_Model_old.geom">
       <Filter>Shaders\Models</Filter>
     </None>
-    <None Include="Shaders\Points\Vert_Points.vert">
-      <Filter>Shaders\Points</Filter>
+    <None Include="Shaders\Debug\Frag_Points.frag">
+      <Filter>Shaders\Debug</Filter>
     </None>
-    <None Include="Shaders\Points\Frag_Points.frag">
-      <Filter>Shaders\Points</Filter>
+    <None Include="Shaders\Debug\Vert_Points.vert">
+      <Filter>Shaders\Debug</Filter>
+    </None>
+    <None Include="Shaders\Debug\Vert_Cones.vert">
+      <Filter>Shaders\Debug</Filter>
+    </None>
+    <None Include="Shaders\Debug\Geom_Cones.geom">
+      <Filter>Shaders\Debug</Filter>
+    </None>
+    <None Include="Shaders\Models\Frag_Improved.frag">
+      <Filter>Shaders\Models</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
@@ -210,7 +222,7 @@
     <Filter Include="Shaders\Models">
       <UniqueIdentifier>{00816edf-bbb7-462c-97e7-3ca45691a18a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Shaders\Points">
+    <Filter Include="Shaders\Debug">
       <UniqueIdentifier>{bb056941-0079-493f-95ca-2cae444d7822}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
