@@ -92,6 +92,7 @@
     <ClCompile Include="includes\ProgramBuilder.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Headers\Log.h" />
     <ClInclude Include="Headers\Model.h" />
     <ClInclude Include="Headers\MyApp.h" />
     <ClInclude Include="includes\GLUtils.hpp" />
@@ -145,6 +146,7 @@
     <None Include="Shaders\Models\Frag_Simple.frag" />
     <None Include="Shaders\Models\Geom_Model.geom" />
     <None Include="Shaders\Models\Geom_Model_old.geom" />
+    <None Include="Shaders\Models\Glsl_common.glsl" />
     <None Include="Shaders\Models\Vert_Model.vert" />
     <None Include="Shaders\Skybox\Frag_skybox_skeleton.frag" />
     <None Include="Shaders\Skybox\Vert_skybox.vert" />

@@ -49,6 +49,9 @@
     <ClInclude Include="Headers\MyApp.h">
       <Filter>Headers</Filter>
     </ClInclude>
+    <ClInclude Include="Headers\Log.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\lab_xneg.png">
@@ -165,6 +168,9 @@
       <Filter>Shaders\Debug</Filter>
     </None>
     <None Include="Shaders\Models\Frag_Improved.frag">
+      <Filter>Shaders\Models</Filter>
+    </None>
+    <None Include="Shaders\Models\Glsl_common.glsl">
       <Filter>Shaders\Models</Filter>
     </None>
   </ItemGroup>

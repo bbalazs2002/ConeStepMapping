@@ -4,6 +4,8 @@
 #include "ObjParser.h"
 #include "ProgramBuilder.h"
 
+#include "Headers/Log.h"
+
 #include <imgui.h>
 #include <iostream>
 #include <string>
@@ -344,22 +346,25 @@ void CMyApp::CleanSkyboxTexture() {
 void CMyApp::InitSSBOs() {
 	// visual debug
 	glGenBuffers(1, &m_pointsSSBO);
+	Log::logToConsole("Visual debug buffer generated (ID: ", m_pointsSSBO, ")");
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_pointsSSBO);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * 128, nullptr, GL_DYNAMIC_DRAW);
 	glm::vec4 attr{ 2.f, 0, 0, 0 };
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4), &attr);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_pointsSSBO);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-	SetPointsBase();
-
+	
 	// numerical debug
 	glGenBuffers(1, &m_debugSSBO);
+	Log::logToConsole("Numerical debug buffer generated (ID: ", m_debugSSBO, ")");
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_debugSSBO);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * 128, nullptr, GL_DYNAMIC_DRAW);
 	attr = { 0, 0, 0, 0 };
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4), &attr);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_debugSSBO);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+	SetPointsBase();
 }
 
 void CMyApp::SetPointsBase() {
@@ -447,7 +452,7 @@ void CMyApp::RenderConemap() {
 	glEndQuery(GL_TIME_ELAPSED);
 	glGetQueryObjectuiv(m_timeQueryID, GL_QUERY_RESULT, &timeElapsed);
 
-	std::cout << "Cone map generated in " << timeElapsed / 1000 << "ms" << std::endl;
+	Log::logToConsole("Conemap generated in ", timeElapsed / 1000., "ms");
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -490,9 +495,10 @@ void CMyApp::RenderDebug() {
 		n = (int) data[0].x;
 		glUnmapNamedBuffer(m_pointsSSBO);
 	} else {
-		std::cout << "Unable to map SSBO" << std::endl;
+		Log::errorToConsole("Unable to map SSBO");
 		return;
 	}
+	Log::logToConsole("Points count: ", n);
 	// std::cout << "n = " << n << std::endl;
 
 	// We always want to see it, regardless of whether there is an object in front of it
@@ -519,7 +525,7 @@ void CMyApp::RenderDebug() {
 	//
 	// Cones
 	//
-	if (n > 3 && m_showCones && m_activeTechnique == 1) {
+	if (n > 4 && m_showCones && m_activeTechnique == 1) {
 		glUseProgram(m_programConesID);
 
 		glUniform1i(ul(m_programConesID, "SSBOPadding"), SSBO_PADDING);
