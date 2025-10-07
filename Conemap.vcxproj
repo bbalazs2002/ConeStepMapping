@@ -92,6 +92,7 @@
     <ClCompile Include="includes\ProgramBuilder.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Headers\Log.h" />
     <ClInclude Include="Headers\Model.h" />
     <ClInclude Include="Headers\MyApp.h" />
     <ClInclude Include="includes\GLUtils.hpp" />
@@ -102,6 +103,7 @@
     <ClInclude Include="includes\ProgramBuilder.h" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="Assets\desert-heightmap.jpg" />
     <Image Include="Assets\Earth-heightmap-small.png" />
     <Image Include="Assets\heightmap_dot.png" />
     <Image Include="Assets\lab_xneg.png" />
@@ -135,13 +137,17 @@
       <FileType>Document</FileType>
     </Text>
     <None Include="Shaders\Conemap\Comp_Conemap.comp" />
+    <None Include="Shaders\Debug\Frag_Points.frag" />
+    <None Include="Shaders\Debug\Geom_Cones.geom" />
+    <None Include="Shaders\Debug\Vert_Cones.vert" />
+    <None Include="Shaders\Debug\Vert_Points.vert" />
+    <None Include="Shaders\Models\Frag_Improved.frag" />
     <None Include="Shaders\Models\Frag_Model.frag" />
     <None Include="Shaders\Models\Frag_Simple.frag" />
     <None Include="Shaders\Models\Geom_Model.geom" />
     <None Include="Shaders\Models\Geom_Model_old.geom" />
+    <None Include="Shaders\Models\Glsl_common.glsl" />
     <None Include="Shaders\Models\Vert_Model.vert" />
-    <None Include="Shaders\Points\Frag_Points.frag" />
-    <None Include="Shaders\Points\Vert_Points.vert" />
     <None Include="Shaders\Skybox\Frag_skybox_skeleton.frag" />
     <None Include="Shaders\Skybox\Vert_skybox.vert" />
     <Text Include="Shaders\Vert_PosNormTex.vert">

@@ -4,10 +4,14 @@
 #include "ObjParser.h"
 #include "ProgramBuilder.h"
 
+#include "Headers/Log.h"
+
 #include <imgui.h>
 #include <iostream>
 #include <string>
 #include <sstream>
+
+#define SSBO_PADDING 5
 
 CMyApp::CMyApp()
 {
@@ -45,14 +49,22 @@ void CMyApp::InitShaders()
 	ProgramBuilder{ m_programModelID }
 		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Models/Vert_Model.vert")
 		.ShaderStage(GL_GEOMETRY_SHADER, "Shaders/Models/Geom_Model_old.geom")
-		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Models/Frag_Model.frag")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Models/Frag_Improved.frag")
 		.Link();
 
 	// Drawing points
 	m_programPointsID = glCreateProgram();
 	ProgramBuilder{ m_programPointsID }
-		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Points/Vert_Points.vert")
-		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Points/Frag_Points.frag")
+		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Debug/Vert_Points.vert")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Debug/Frag_Points.frag")
+		.Link();
+
+	// Drawing cones
+	m_programConesID = glCreateProgram();
+	ProgramBuilder{ m_programConesID }
+		.ShaderStage(GL_VERTEX_SHADER, "Shaders/Debug/Vert_Cones.vert")
+		.ShaderStage(GL_GEOMETRY_SHADER, "Shaders/Debug/Geom_Cones.geom")
+		.ShaderStage(GL_FRAGMENT_SHADER, "Shaders/Debug/Frag_Points.frag")
 		.Link();
 
 	// Conemap generation
@@ -178,32 +190,33 @@ void CMyApp::InitModels() {
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-32.obj"));
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/uv-sphere-64.obj"));
 		// MeshObject<VertexMergedNorm> SuzanneCPU = ObjParser::mergeNormals(ObjParser::parse("Assets/cube.obj"));
-		
 		/*
 		m_models.push_back(new Model(
 			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::scale(glm::vec3(10.0f, 10.0f, 10.0f)),
 			CreateGLObjectFromMesh(SuzanneCPU, vertexAttribList), false
 		));
 		*/
-
+		
+		
 		// SQUARE
 		MeshObject<VertexMergedNorm> ObjectCPU = {
 			{
-				{glm::vec4(0, 0, 0, 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 0)},
-				{glm::vec4(0, 0, 1., 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 1.)},
-				{glm::vec4(1., 0, 1., 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 1.)},
-				{glm::vec4(1., 0, 0, 0), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 0)}
+				{glm::vec4(0, 0, 0, 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 0)},
+				{glm::vec4(0, 0, 1., 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 1.)},
+				{glm::vec4(1., 0, 1., 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 1.)},
+				{glm::vec4(1., 0, 0, 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 0)}
 			},
 			{
 				0,1,2,
-				0,2,3
+				// 0,2,3
 			}
 		};
 		
 		m_models.push_back(new Model(
-			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::scale(glm::vec3(10.0f, 10.0f, 10.0f)),
+			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::identity<glm::mat4>(), // glm::scale(glm::vec3(10.0f, 10.0f, 10.0f))
 			CreateGLObjectFromMesh(ObjectCPU, vertexAttribList), false
 		));
+		
 	}
 	
 	{
@@ -254,7 +267,7 @@ void CMyApp::CleanTexture() {
 	glDeleteTextures(1, &m_modelTextureID);
 	CleanHeightMapTexture();
 	CleanConemapTexture();
-	CleanSkyboxGeometry();
+	CleanSkyboxTexture();
 }
 
 void CMyApp::InitHeightMapTexture() {
@@ -334,13 +347,26 @@ void CMyApp::CleanSkyboxTexture() {
 }
 
 void CMyApp::InitSSBOs() {
+	// visual debug
 	glGenBuffers(1, &m_pointsSSBO);
+	Log::logToConsole("Visual debug buffer generated (ID: ", m_pointsSSBO, ")");
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_pointsSSBO);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * 128, nullptr, GL_DYNAMIC_DRAW);
 	glm::vec4 attr{ 2.f, 0, 0, 0 };
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4), &attr);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_pointsSSBO);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	
+	// numerical debug
+	glGenBuffers(1, &m_debugSSBO);
+	Log::logToConsole("Numerical debug buffer generated (ID: ", m_debugSSBO, ")");
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_debugSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * 128, nullptr, GL_DYNAMIC_DRAW);
+	attr = { 0, 0, 0, 0 };
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4), &attr);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_debugSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
 	SetPointsBase();
 }
 
@@ -349,7 +375,8 @@ void CMyApp::SetPointsBase() {
 		glm::vec4{m_pointsBase[0], m_pointsBase[1], m_pointsBase[2], 1},
 		glm::vec4{m_pointsBase[0] + m_pointsDir[0], m_pointsBase[1] + m_pointsDir[1], m_pointsBase[2] + m_pointsDir[2], 1}
 	};
-	glNamedBufferSubData(m_pointsSSBO, sizeof(glm::vec4), sizeof(glm::vec4) * 2, Points.data());
+	glNamedBufferSubData(m_pointsSSBO, sizeof(glm::vec4) * SSBO_PADDING, sizeof(glm::vec4) * 2, Points.data());
+	glNamedBufferSubData(m_debugSSBO, sizeof(glm::vec4), sizeof(glm::vec4) * 2, Points.data());
 }
 
 void CMyApp::CleanSSBOs() {
@@ -362,7 +389,10 @@ bool CMyApp::Init()
 
 	// Set a bluish clear color
 	// glClear() will use this for clearing the color buffer.
-	glClearColor(0.125f, 0.25f, 0.5f, 1.0f);
+	// glClearColor(0.125f, 0.25f, 0.5f, 1.0f);
+	glClearColor(0, 0, 0, 1.0f);
+
+	glGenQueries(1, &m_timeQueryID);
 
 	InitShaders();
 	InitTexture();
@@ -391,6 +421,16 @@ bool CMyApp::Init()
 }
 
 void CMyApp::RenderConemap() {
+
+	glBindTexture(GL_TEXTURE_2D, m_conemapTextureID);
+	if (m_interpolation) {
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	} else {
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_heightmapTexureID);
 
@@ -406,8 +446,16 @@ void CMyApp::RenderConemap() {
 	glUniform1i(ul(m_programConemapID, "height"), m_HMres.y);
 	glUniform1i(ul(m_programConemapID, "inputImage"), 0);
 
+	GLuint timeElapsed;		// elapsed time in nano seconds
+	glBeginQuery(GL_TIME_ELAPSED, m_timeQueryID);
+
 	glDispatchCompute(numWorkgroupsX, numWorkgroupsY, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+	glEndQuery(GL_TIME_ELAPSED);
+	glGetQueryObjectuiv(m_timeQueryID, GL_QUERY_RESULT, &timeElapsed);
+
+	Log::logToConsole("Conemap generated in ", timeElapsed / 1000., "ms");
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -442,30 +490,70 @@ void CMyApp::DrawAxes()
 	glEnable(GL_DEPTH_TEST);
 }
 
-void CMyApp::DrawPoints() {
+void CMyApp::RenderDebug() {
 	int n = 0;
 	void* ptr = glMapNamedBuffer(m_pointsSSBO, GL_READ_ONLY);
 	if (ptr) {
 		glm::vec4* data = static_cast<glm::vec4*>(ptr);
 		n = (int) data[0].x;
 		glUnmapNamedBuffer(m_pointsSSBO);
-	}
-
-	// std::cout << "n = " << n << std::endl;
-
-	if (n == 0) {
+	} else {
+		Log::errorToConsole("Unable to map SSBO");
 		return;
 	}
-
-	glUseProgram(m_programPointsID);
-
-	glProgramUniformMatrix4fv(m_programAxesID, ul(m_programAxesID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
 
 	// We always want to see it, regardless of whether there is an object in front of it
 	glDisable(GL_DEPTH_TEST);
 
-	glPointSize(5.f);
-	glDrawArrays(GL_POINTS, 0, n);
+	//
+	// Points
+	//
+	if (n > 0) {
+		glUseProgram(m_programPointsID);
+
+		glUniform1i(ul(m_programPointsID, "SSBOPadding"), SSBO_PADDING);
+		glUniformMatrix4fv(ul(m_programPointsID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
+
+		GLfloat pointSize;
+		glGetFloatv(GL_POINT_SIZE, &pointSize);
+		glPointSize(10.f);
+
+		glDrawArrays(GL_POINTS, 0, n);
+
+		glPointSize(pointSize);
+	}
+
+	//
+	// Cones
+	//
+	if (n > 4 && m_showCones && m_activeTechnique == 1) {
+		glUseProgram(m_programConesID);
+
+		glUniform1i(ul(m_programConesID, "SSBOPadding"), SSBO_PADDING);
+		glUniformMatrix4fv(ul(m_programConesID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
+
+		// cone map
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_conemapTextureID);
+		if (m_interpolation) {
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		}
+		else {
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		}
+		glUniform1i(ul(m_programConesID, "coneMap"), 1);
+
+		GLfloat lineWidth;
+		glGetFloatv(GL_LINE_WIDTH, &lineWidth);
+		glLineWidth(2.f);
+
+		glDrawArrays(GL_POINTS, 0, n - 3);
+
+		glLineWidth(lineWidth);
+	}
+	
 	glUseProgram(0);
 	glEnable(GL_DEPTH_TEST);
 }
@@ -504,6 +592,11 @@ void CMyApp::RenderModels() {
 
 			glUniform1f(ul(progID, "modelNormalMult"), m_modelNormalMult);
 			glUniform1i(ul(progID, "rayMarchingTechnique"), m_activeTechnique);
+
+			glUniform1i(ul(progID, "SSBOPadding"), SSBO_PADDING);
+			glUniform1i(ul(progID, "showSteps"), m_showSteps ? 1 : 0);
+			glUniform1i(ul(progID, "showEnterExit"), m_showEnterExit ? 1 : 0);
+			glUniform1i(ul(progID, "showFlags"), m_showFlags ? 1 : 0);
 		}
 
 		// texture
@@ -514,6 +607,14 @@ void CMyApp::RenderModels() {
 		// cone map
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, m->GetConemap());
+		if (m_interpolation) {
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		}
+		else {
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		}
 		glUniform1i(ul(progID, "coneMap"), 1);
 
 		glUniformMatrix4fv(ul(progID, "viewProj"), 1, GL_FALSE, glm::value_ptr(m_camera.GetViewProj()));
@@ -526,6 +627,8 @@ void CMyApp::RenderModels() {
 	}
 
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	glUseProgram(0);
 	glBindVertexArray(0);
@@ -567,19 +670,23 @@ void CMyApp::Render()
 		DrawAxes();
 	}
 	if (m_showPoints) {
-		DrawPoints();
+		RenderDebug();
 	}
 }
 
 void CMyApp::RenderGUI()
 {
-	ImGui::Begin("Debug window");
+	// Visual debug
+	ImGui::Begin("Visual debug window");
 	{
 
 		float pb[3]{ m_pointsBase[0], m_pointsBase[1], m_pointsBase[2] };
 		float pd[3]{ m_pointsDir[0], m_pointsDir[1], m_pointsDir[2] };
-
+		
 		ImGui::Checkbox("Show debug", &m_showPoints);
+		ImGui::Checkbox("Show steps", &m_showSteps);
+		ImGui::Checkbox("Show enter/exit", &m_showEnterExit);
+		ImGui::Checkbox("Show cones", &m_showCones);
 		ImGui::SliderFloat3("Base", m_pointsBase, -10.0f, 10.0f);
 		ImGui::SliderFloat3("Direction", m_pointsDir, -1.0f, 1.0f);
 		if (ImGui::Button("To camera")) {
@@ -614,8 +721,174 @@ void CMyApp::RenderGUI()
 	}
 	ImGui::End();
 
+	// Numerical debug
+	ImGui::Begin("Numerical debug window");
+	{
+
+		float pb[3]{ m_pointsBase[0], m_pointsBase[1], m_pointsBase[2] };
+		float pd[3]{ m_pointsDir[0], m_pointsDir[1], m_pointsDir[2] };
+
+		ImGui::SliderFloat3("Base", m_pointsBase, -10.0f, 10.0f);
+		ImGui::SliderFloat3("Direction", m_pointsDir, -1.0f, 1.0f);
+		if (ImGui::Button("To camera")) {
+			glm::vec3 e = m_camera.GetEye();
+			m_pointsBase[0] = e.x;
+			m_pointsBase[1] = e.y;
+			m_pointsBase[2] = e.z;
+
+			glm::vec3 a = m_camera.GetAt() - e;
+			m_pointsDir[0] = a.x;
+			m_pointsDir[1] = a.y;
+			m_pointsDir[2] = a.z;
+		}
+
+		if (
+			pb[0] != m_pointsBase[0] || pb[1] != m_pointsBase[1] || pb[2] != m_pointsBase[2] ||
+			pd[0] != m_pointsDir[0] || pd[1] != m_pointsDir[1] || pd[2] != m_pointsDir[2]
+			) {	// save values to buffer if changed
+			if (m_pointsDir[0] == 0 && m_pointsDir[1] == 0 && m_pointsDir[2] == 0) {
+				m_pointsDir[1] = 1.f;
+			}
+			else {
+				float l = sqrt(pow(m_pointsDir[0], 2) + pow(m_pointsDir[1], 2) + pow(m_pointsDir[2], 2));
+				m_pointsDir[0] = m_pointsDir[0] / l;
+				m_pointsDir[1] = m_pointsDir[1] / l;
+				m_pointsDir[2] = m_pointsDir[2] / l;
+			}
+
+			SetPointsBase();
+		}
+
+		{
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_debugSSBO);
+			GLint size = 0;
+			glGetBufferParameteriv(GL_SHADER_STORAGE_BUFFER, GL_BUFFER_SIZE, &size);
+			glm::vec4* data = (glm::vec4*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+			if (data) {
+				ImGui::Text("Step count: %.4f", data[0].x);
+				ImGui::Text("Termination flags: %d", (int) data[0].y);
+				ImGui::Text("Eye (scene space): %.4f; %.4f; %.4f", data[1].x, data[1].y, data[1].z);
+				ImGui::Text("Direction (scene space): %.4f; %.4f; %.4f", data[2].x, data[2].y, data[2].z);
+
+				if (ImGui::BeginTable("Verteces (scene space)", 4)) {
+
+					ImGui::TableSetupColumn("pos");
+					ImGui::TableSetupColumn("norm");
+					ImGui::TableSetupColumn("merged");
+					ImGui::TableSetupColumn("tex");
+					ImGui::TableHeadersRow();
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("0; 0; 0");
+					ImGui::TableSetColumnIndex(1); ImGui::Text("0; 1; 0");
+					ImGui::TableSetColumnIndex(2); ImGui::Text("0; 1; 0");
+					ImGui::TableSetColumnIndex(3); ImGui::Text("0; 0");
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("0; 0; 1");
+					ImGui::TableSetColumnIndex(1); ImGui::Text("0; 1; 0");
+					ImGui::TableSetColumnIndex(2); ImGui::Text("0; 1; 0");
+					ImGui::TableSetColumnIndex(3); ImGui::Text("0; 1");
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("1; 0; 1");
+					ImGui::TableSetColumnIndex(1); ImGui::Text("0; 1; 0");
+					ImGui::TableSetColumnIndex(2); ImGui::Text("0; 1; 0");
+					ImGui::TableSetColumnIndex(3); ImGui::Text("1; 1");
+
+					ImGui::EndTable();
+				}
+
+				ImGui::Text("scene2texture space:");
+				if (ImGui::BeginTable("scene2texture space", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[3].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[3].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[3].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[3].w);
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[4].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[4].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[4].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[4].w);
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[5].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[5].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[5].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[5].w);
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[6].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[6].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[6].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[6].w);
+
+					ImGui::EndTable();
+				}
+				ImGui::Text("Eye (texture space): %.4f; %.4f; %.4f; %.4f", data[7].x, data[7].y, data[7].z, data[7].w);
+
+				ImGui::Text("scene2unit space:");
+				if (ImGui::BeginTable("scene2unit space", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[8].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[8].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[8].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[8].w);
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[9].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[9].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[9].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[9].w);
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[10].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[10].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[10].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[10].w);
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[11].x);
+					ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[11].y);
+					ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[11].z);
+					ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[11].w);
+
+					ImGui::EndTable();
+				}
+				ImGui::Text("Eye (unit space): %.4f; %.4f; %.4f; %.4f", data[12].x, data[12].y, data[12].z, data[12].w);
+
+				ImGui::Text("In (texture space): %.4f; %.4f; %.4f", data[13].x, data[13].y, data[13].z);
+				ImGui::Text("Out (texture space): %.4f; %.4f; %.4f", data[14].x, data[14].y, data[14].z);
+				ImGui::Text("v (texture space): %.4f; %.4f; %.4f", data[15].x, data[15].y, data[15].z);
+
+				ImGui::Text("plus data: %.4f; %.4f; %.4f; %.4f", data[16].x, data[16].y, data[16].z, data[16].w);
+
+				if (ImGui::BeginTable("Steps", 5)) {
+					ImGui::TableSetupColumn("ti");
+					ImGui::TableSetupColumn("t");
+					ImGui::TableSetupColumn("height");
+					ImGui::TableSetupColumn("tan");
+					ImGui::TableSetupColumn("ui");
+					ImGui::TableHeadersRow();
+
+					for (int i = 0; i < (int)floor(data[0].x); ++i) {
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[17 + i * 2].x);
+						ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[17 + i * 2].y);
+						ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[17 + i * 2].z);
+						ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[17 + i * 2].w);
+						ImGui::TableSetColumnIndex(4); ImGui::Text("%.4f; %.4f; %.4f", data[17 + i * 2 + 1].x, data[17 + i * 2 + 1].y, data[17 + i * 2 + 1].z);
+					}
+
+					ImGui::EndTable();
+
+				}
+			}
+			glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		}
+
+	}
+	ImGui::End();
+
 	ImGui::Begin("Options window");
 	{
+		bool regenConeMap = false;
+
 		ImGui::Text("Render resolution %dx%d", m_width, m_height);
 		ImGui::Checkbox("Show axes", &m_showAxes);
 
@@ -629,10 +902,12 @@ void CMyApp::RenderGUI()
 			}
 			ImGui::EndCombo();
 		}
+		bool interpolation = m_interpolation;
+		ImGui::Checkbox("Texture interpolation", &interpolation);
+		regenConeMap = regenConeMap || interpolation != m_interpolation;
 
 		// heightmap
 		int hmapID = m_activeHeightMap;
-
 		if (ImGui::BeginCombo("Heightmap", m_heightMaps[hmapID].c_str()))
 		{
 			for (int i = 0; i < m_heightMaps.size(); ++i) {
@@ -642,16 +917,7 @@ void CMyApp::RenderGUI()
 			}
 			ImGui::EndCombo();
 		}
-
-		if (hmapID != m_activeHeightMap) {
-			// regenerate conemap
-			CleanConemapTexture();
-			CleanHeightMapTexture();
-			m_activeHeightMap = hmapID;
-			InitHeightMapTexture();
-			InitConemapTexture();
-			RenderConemap();
-		}
+		regenConeMap = regenConeMap || hmapID != m_activeHeightMap;
 
 		ImGui::SliderFloat3("light_dir", &m_lightPos.x, -10.f, 10.f);
 		ImGui::SliderFloat3("light_col", &m_lightCol.x, 0.f, 1.f);
@@ -671,6 +937,18 @@ void CMyApp::RenderGUI()
 		ImGui::SliderFloat("modelNormalMult", &m_modelNormalMult, 0.1, 2.0, "%.3f");
 		ImGui::Checkbox("show non-converge", &m_displayNonConverged);
 		ImGui::Checkbox("discard fragments", &m_discardFragments);
+		ImGui::Checkbox("show con-step flags", &m_showFlags);
+
+		if (regenConeMap) {
+			// regenerate conemap
+			CleanConemapTexture();
+			CleanHeightMapTexture();
+			m_activeHeightMap = hmapID;
+			m_interpolation = interpolation;
+			InitHeightMapTexture();
+			InitConemapTexture();
+			RenderConemap();
+		}
 	}
 	ImGui::End();
 }

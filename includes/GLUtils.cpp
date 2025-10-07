@@ -4,6 +4,10 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <regex>
+#include <vector>
+#include <sstream>
+#include "../Headers/Log.h"
 
 #include <SDL2/SDL_image.h>
 
@@ -38,11 +42,49 @@ static void loadShaderCode( std::string& shaderCode, const std::filesystem::path
 	shaderStream.close();
 }
 
+// Ez egy nagyon primitív preprocesszor!!! Csak az #include-okat kezeli és nincs benne védelem a többszörös include-ok ellen
+static void preprocessShaderCode(std::string& shaderCode, const std::filesystem::path& includerPath) {
+
+	// query directory from parent path
+	const std::filesystem::path& parentPath = includerPath.parent_path();
+
+	std::regex includeRegex(R"(#include\s*\"([^\"]+)\")");
+	std::smatch match;
+
+	std::string processedCode;
+	std::string::const_iterator searchStart(shaderCode.cbegin());
+
+	while (std::regex_search(searchStart, shaderCode.cend(), match, includeRegex)) {
+		processedCode.append(searchStart, match[0].first); // Append up to include line
+
+		// build include path
+		std::stringstream includeFile;
+		includeFile << parentPath.string() << "/" << match[1].str();
+
+		Log::logToConsole("Include found: ", match[1].str(), "; Full path: ", includeFile.str());
+
+		std::string includedCode;
+		loadShaderCode(includedCode, includeFile.str());
+
+		// Recursively preprocess the included file
+		preprocessShaderCode(includedCode, includeFile.str());
+
+		processedCode.append(includedCode); // Replace include with content
+		searchStart = match[0].second; // Continue after the match
+	}
+
+	processedCode.append(searchStart, shaderCode.cend()); // Append remaining code
+	shaderCode = std::move(processedCode);
+}
+
 GLuint AttachShader( const GLuint programID, GLenum shaderType, const std::filesystem::path& _fileName )
 {
     // shaderkod betoltese _fileName fajlbol
     std::string shaderCode;
     loadShaderCode( shaderCode, _fileName );
+
+	// preprocessor futtatása az include-ok kicserélésére
+	preprocessShaderCode(shaderCode, _fileName);
 
     return AttachShaderCode( programID, shaderType, shaderCode );
 }

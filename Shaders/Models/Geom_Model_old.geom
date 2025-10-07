@@ -1,191 +1,43 @@
 #version 430 core
 
-layout(std430, binding = 0) buffer Positions{
-    vec4 pos[];
-};
-uniform sampler2D coneMap;
-uniform vec2 HMres;
-uniform int maxSteps = 50;
+#define GEOMETRY_SHADER
 
 in vec2 vs_out_tex[];
 in vec3 vs_out_norm[];
-in vec3 vs_out_merged[];    // merged normals
+in vec3 vs_out_merged[];            // merged normals
 
 out vec3 gs_out_tex;
 out vec3 gs_out_norm;
 out vec3 gs_out_merged;
 out vec3 gs_out_pos;
-out mat4 gs_out_M;              // transformation from scene space to texture space
-out vec3 gs_out_Meye;           // cam position in texture space
-out mat4 gs_out_T;              // transformation from scene space to unit prism space
-out vec3 gs_out_Teye;           // cam position in unit prism space
-out mat3x2 gs_out_triangle;     // base triangle verteces in texture space
+out mat4 gs_out_Scene2Tex;          // transformation from scene space to texture space
+out vec3 gs_out_TexEye;             // cam position in texture space
+out mat4 gs_out_Scene2Unit;         // transformation from scene space to unit prism space
+out vec3 gs_out_UnitEye;            // cam position in unit prism space
+out mat3x2 gs_out_triangle;         // base triangle verteces in texture space
 
 uniform mat4 world;
 uniform mat4 viewProj;
 uniform float modelNormalMult = .5;
 uniform vec3 camPos;
+uniform vec2 HMres;
+
+uniform int rayMarchingTechnique = 0;
+uniform int showSteps = 0;
+uniform int showEnterExit = 0;
 
 layout(triangles) in;  
 layout(triangle_strip, max_vertices = 18) out;
 
+#define SSBOPADDING 7
 
 //
-//  Find input and output points
+// Include common file with helper functions
 //
-struct Ray {
-    vec3 origin;
-    vec3 direction;
-};
+#include "Glsl_common.glsl"
 
-struct Triangle {
-    vec3 v0, v1, v2;
-};
+void main() {
 
-bool rayIntersectsTriangle(Ray ray, Triangle tri, out float t) {
-    vec3 edge1 = tri.v1 - tri.v0;
-    vec3 edge2 = tri.v2 - tri.v0;
-    vec3 h = cross(ray.direction, edge2);
-    float a = dot(edge1, h);
-    
-    if (abs(a) < 1e-6) return false;  // Ray is parallel to the triangle
-
-    float f = 1.0 / a;
-    vec3 s = ray.origin - tri.v0;
-    float u = f * dot(s, h);
-    
-    if (u < 0.0 || u > 1.0) return false;
-
-    vec3 q = cross(s, edge1);
-    float v = f * dot(ray.direction, q);
-    
-    if (v < 0.0 || u + v > 1.0) return false;
-
-    t = f * dot(edge2, q);
-    
-    return t >= 0.0;  // Intersection must be in the positive direction
-}
-
-bool rayIntersectsPrism(Ray ray, Triangle faces[8], out vec3 entry, out vec3 exit) {
-    float tMin = 1e10, tMax = -1e10;
-    bool hasEntry = false, hasExit = false;
-
-    for (int i = 0; i < 8; i++) {
-        float t;
-        if (rayIntersectsTriangle(ray, faces[i], t)) {
-            vec3 intersection = ray.origin + t * ray.direction;
-            if (t < tMin) {
-                tMin = t;
-                entry = intersection;
-                hasEntry = true;
-            }
-            if (t > tMax) {
-                tMax = t;
-                exit = intersection;
-                hasExit = true;
-            }
-        }
-    }
-
-    return hasEntry && hasExit;
-}
-
-int pcount = 2;
-vec2 getHC_texture(vec2 uv)
-{
-    return texture(coneMap, uv);    // .r is the height; .g is the tangent of the cone
-}
-void findIntersection_linearSearch(vec3 u1, vec3 u2, mat4 invM)
-{
-    vec3 v = u2 - u1;
-
-    int stepCount;
-    for (float t = 0.; t <= 1.1; t += 1./64.) {
-        vec3 u = u1 + t * v;
-
-        pos[pcount] = invM * vec4(u, 1);
-        ++pcount;
-
-        if (u.x > 1. || u.x < 0. || u.y > 1. || u.y < 0.) {
-            // out of triangle
-            return;
-        }
-
-        vec2 txt = getHC_texture(u.xy);
-        if (txt.r > u.z) {
-            // hit found
-            return;
-        } 
-    }
-}
-void findIntersection_coneStepMapping_new(vec3 u1, vec3 u2, mat4 invM) {
-    vec3 v = normalize(u2 - u1);            // direction vector from u1 to u2
-    float tgb = length(v.xy) / (-v.z);      // tangent between v and -normal
-
-    // initial data
-    vec3 ui = u1 + 0.001 * v;
-    vec2 tex = getHC_texture(ui.xy);        // texture at the initial point
-    vec3 ai = vec3(ui.xy, tex.x);           // vertex of the cone
-    float t = 0.;                           // t parameter of the intersection point
-    vec2 dif = vec2(10.);
-
-    int stepCount = 0;
-    do {
-        
-        pos[pcount] = invM * vec4(ui, 1);
-        ++pcount;
-
-        // evaluate current point
-        if (length(dif * HMres) < 0.1 || dot(ui-u1,v)<0) {
-            // found intersection or ui is out of the cube
-            return;
-        }
-
-        // take step
-        float tga = tex.y;
-        if (tgb + tga == 0) {                           // ray is parallel to cone
-            return;
-        }
-
-        float hi = (tgb * (ui.z - ai.z)) / (tgb + tga);
-        float xi = ai.z + hi;
-        float ti = (xi - ui.z) / v.z;
-
-        t = (xi - u1.z) / v.z;
-
-        // setup new intersection point
-        vec3 nui = ui + ti * v;
-        dif = abs(nui.xy - ui.xy);
-        ui = nui;
-        tex = getHC_texture(ui.xy);
-        ai = vec3(ui.xy, tex.x);
-
-        ++stepCount;
-    } while(stepCount <= maxSteps);
-}
-
-// unit prism intersection
-bool intersectUnitPrism(vec3 p0, vec3 v, out float tNear, out float tFar) {     // p0, v in unit prism space
-    float n = -1e10, f = 1e10; // near, far
-
-    vec3 t0 = -p0 / v; // a solution for each cardinal normal
-    if (v.x > 0.) { n = max(n, t0.x); } else { f = min(f, t0.x); }
-    if (v.y > 0.) { n = max(n, t0.y); } else { f = min(f, t0.y); }
-    if (v.z > 0.) { n = max(n, t0.z); } else { f = min(f, t0.z); }
-
-    vec3 q = vec3(1, 1, 0) - p0;
-    float t1 = q.y / v.y;
-    if (v.y < 0.) { n = max(n, t1); } else { f = min(f, t1); }
-    float t2 = (q.x + q.z) / (v.x + v.z);
-    if (v.x + v.z < 0.) { n = max(n, t2); } else { f = min(f, t2); }
-
-    tNear = n;
-    tFar = f;
-    return n < f;
-}
-
-void main()
-{
     // p - scene space positions
     vec4 verteces[] = {
         world * gl_in[0].gl_Position,                                                     // a - 0
@@ -211,9 +63,7 @@ void main()
         vec4(0, 0, 0, 1),
         vec4(1, 0, 0, 1),
         vec4(0, 0, 1, 1),
-        vec4(0, 1, 0, 1),
-        vec4(1, 1, 0, 1),
-        vec4(0, 1, 1, 1)
+        vec4(0, 1, 0, 1)
     };
 
     gs_out_triangle = mat3x2(
@@ -249,54 +99,60 @@ void main()
     mat4 invM = inverse(M);
     mat4 invT = inverse(T);
 
+    // setup pipeline variables
+    gs_out_Scene2Tex = M;
+    gs_out_TexEye = (M * vec4(camPos, 1)).xyz;
+    gs_out_Scene2Unit = T;
+    gs_out_UnitEye = (T * vec4(camPos, 1)).xyz;
+
+    // set numerical debug values
+    numericalDebugSet(3, M);
+    numericalDebugSet(7, M * numericalDebugGet(1));
+    numericalDebugSet(8, T);
+    numericalDebugSet(12, T * numericalDebugGet(1));
+
+    // save texture to world transformation to the SSBO
+    visualDebugSet(1, invM);
+
     // find entry and exit points
-    vec4 p0 = T * pos[1];
-    vec4 p1 = T * pos[2];
+    vec4 p0 = T * visualDebugGet(5);
+    vec4 p1 = T * visualDebugGet(6);
     vec3 direction = normalize((p1 - p0).xyz);
     float tNear = 0;
     float tFar = 0;
-    if (intersectUnitPrism(p0.xyz, direction, tNear, tFar)) {
-        ++pcount;
-        pos[3] = invT * (p0 +  vec4(direction * tNear, 0));   
-        ++pcount;
-        pos[4] = invT * (p0 + vec4(direction * tFar, 0));
+
+    UnitIntersection unitInt = intersectUnitPrism(Ray(p0.xyz, direction));
+    visualDebugSet(0, vec4(0));
+    if (unitInt.found) {
+
+        // transform enter and exit points to texture space
+        vec4 pNear = M * invT * (p0 +  vec4(direction * unitInt.near, 0));
+        vec4 pFar = M * invT * (p0 + vec4(direction * unitInt.far, 0));
+
+        numericalDebugSet(13, pNear);
+        numericalDebugSet(14, pFar);
+
+        int pointCount = 0;
+        int vDebugIndex = SSBOPADDING;
+        if (showEnterExit > 0) {
+            visualDebugSet(vDebugIndex++, pNear);
+        }
+        IntersectReturn data = findIntersection_coneStepMapping(IntersectParams(pNear.xyz, pFar.xyz, (M * numericalDebugGet(1)).xyz, vDebugIndex));
+        vDebugIndex += data.stepCount;
+        if (showEnterExit > 0) {
+            visualDebugSet(vDebugIndex++, pFar);
+        }
+
+        visualDebugSet(0, vec4(vDebugIndex - 5));
+        numericalDebugSet(0, vec4(data.stepCount, data.flags, 0, 0));
     }
 
     // draw unit prism
     /*
     for (int i = 0; i < 6; ++i) {
-        pos[++pcount] = T * verteces[i]; // uprismPos[i];
+        pos[SSBOPadding + (pcount++)] = T * verteces[i]; // uprismPos[i];
     }
     */
-
-    // find intersections for debug
-    /*
-    vec3 entry;
-    vec3 exit;
-    Triangle faces[8];
-    faces[0] = Triangle(verteces[0].xyz, verteces[2].xyz, verteces[1].xyz);
-    faces[1] = Triangle(verteces[3].xyz, verteces[4].xyz, verteces[5].xyz);
-    faces[2] = Triangle(verteces[0].xyz, verteces[1].xyz, verteces[3].xyz);
-    faces[3] = Triangle(verteces[1].xyz, verteces[4].xyz, verteces[3].xyz);
-    faces[4] = Triangle(verteces[1].xyz, verteces[2].xyz, verteces[4].xyz);
-    faces[5] = Triangle(verteces[2].xyz, verteces[5].xyz, verteces[4].xyz);
-    faces[6] = Triangle(verteces[2].xyz, verteces[0].xyz, verteces[5].xyz);
-    faces[7] = Triangle(verteces[0].xyz, verteces[3].xyz, verteces[2].xyz);
-    if(rayIntersectsPrism(Ray(pos[1].xyz, normalize(pos[2].xyz - pos[1].xyz)), faces, entry, exit)) {
-        ++pcount;
-        // findIntersection_linearSearch((M * vec4(entry, 1)).xyz, (M * vec4(exit, 1)).xyz, invM);
-        // findIntersection_coneStepMapping_new((M * vec4(entry, 1)).xyz, (M * vec4(exit, 1)).xyz, invM);
-        pos[4] = vec4(entry, 1);
-        // pos[4] = vec4(exit, 1);
-    }
-    */
-
-    pos[0] = vec4(pcount, 0, 0, 0);
-
-    gs_out_M = M;
-    gs_out_Meye = (M * vec4(camPos, 1)).xyz;
-    gs_out_T = T;
-    gs_out_Teye = (T * vec4(camPos, 1)).xyz;
 
     //
     // TRIANGLE STRIP
