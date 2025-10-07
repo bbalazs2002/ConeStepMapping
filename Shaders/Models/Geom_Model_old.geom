@@ -1,18 +1,20 @@
 #version 430 core
 
+#define GEOMETRY_SHADER
+
 in vec2 vs_out_tex[];
 in vec3 vs_out_norm[];
-in vec3 vs_out_merged[];    // merged normals
+in vec3 vs_out_merged[];            // merged normals
 
 out vec3 gs_out_tex;
 out vec3 gs_out_norm;
 out vec3 gs_out_merged;
 out vec3 gs_out_pos;
-out mat4 gs_out_M;              // transformation from scene space to texture space
-out vec3 gs_out_Meye;           // cam position in texture space
-out mat4 gs_out_T;              // transformation from scene space to unit prism space
-out vec3 gs_out_Teye;           // cam position in unit prism space
-out mat3x2 gs_out_triangle;     // base triangle verteces in texture space
+out mat4 gs_out_Scene2Tex;          // transformation from scene space to texture space
+out vec3 gs_out_TexEye;             // cam position in texture space
+out mat4 gs_out_Scene2Unit;         // transformation from scene space to unit prism space
+out vec3 gs_out_UnitEye;            // cam position in unit prism space
+out mat3x2 gs_out_triangle;         // base triangle verteces in texture space
 
 uniform mat4 world;
 uniform mat4 viewProj;
@@ -98,10 +100,10 @@ void main() {
     mat4 invT = inverse(T);
 
     // setup pipeline variables
-    gs_out_M = M;
-    gs_out_Meye = (M * vec4(camPos, 1)).xyz;
-    gs_out_T = T;
-    gs_out_Teye = (T * vec4(camPos, 1)).xyz;
+    gs_out_Scene2Tex = M;
+    gs_out_TexEye = (M * vec4(camPos, 1)).xyz;
+    gs_out_Scene2Unit = T;
+    gs_out_UnitEye = (T * vec4(camPos, 1)).xyz;
 
     // set numerical debug values
     numericalDebugSet(3, M);
@@ -135,15 +137,14 @@ void main() {
         if (showEnterExit > 0) {
             visualDebugSet(vDebugIndex++, pNear);
         }
-        if (showSteps > 0) {
-            IntersectReturn data = findIntersection_coneStepMapping(IntersectParams(pNear.xyz, pFar.xyz, (M * visualDebugGet(SSBOPADDING)).xyz, vDebugIndex));
-            vDebugIndex += data.stepCount;
-        }
+        IntersectReturn data = findIntersection_coneStepMapping(IntersectParams(pNear.xyz, pFar.xyz, (M * visualDebugGet(SSBOPADDING)).xyz, vDebugIndex));
+        vDebugIndex += data.stepCount;
         if (showEnterExit > 0) {
             visualDebugSet(vDebugIndex++, pFar);
         }
 
         visualDebugSet(0, vec4(vDebugIndex - 5));
+        numericalDebugSet(0, vec4(data.stepCount, data.flags, 0, 0));
     }
 
     // draw unit prism

@@ -12,12 +12,12 @@ float getTan(float fx, vec2 xuv, vec2 nxny) {
 	vec2 yuv = nxny / vec2(width - 1, height - 1);
 	float fy = texture(inputImage, yuv).r;
 
-	return max(0., (fy - fx) / length(xuv - yuv));
+	return max(0., length(xuv - yuv) / (fy - fx));
 }
 
 void main() {
 
-/*
+	/* FLAT CONEMAP
 	for (int i = 0; i < 5; ++i) {
 		for (int j = 0; j < 5; ++j) {
 			imageStore(outputImage, ivec2(i, j), vec4(0, 1., 0, 1.));		
@@ -26,6 +26,7 @@ void main() {
 	return;
 	*/
 
+	/* STATIC SPIKE CONEMAP
 	// tangents
 	// float a = (2.f * sqrt(2)) / 5.f;
 	// float b = sqrt(5.f) / 5.f;
@@ -72,6 +73,9 @@ void main() {
 	imageStore(outputImage, ivec2(4, 4), vec4(0, a, 0, 1.));
 
 	return;
+	*/
+
+	/* DYNAMICLY GENERATED CONEMAP */
 
 	// Filter collapsed textures
 	if (width < 2 || height < 2) {
@@ -106,7 +110,7 @@ void main() {
 				if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
 					tn = getTan(fx, xuv, vec2(nx, ny));
 					if (tn > 0) {
-						minTan = max(minTan, tn);
+						minTan = min(minTan, tn);
 					}
 				}
 
@@ -118,7 +122,7 @@ void main() {
 				if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
 					tn = getTan(fx, xuv, vec2(nx, ny));
 					if (tn > 0) {
-						minTan = max(minTan, tn);
+						minTan = min(minTan, tn);
 					}
 				}
 			}

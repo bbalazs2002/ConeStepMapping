@@ -196,6 +196,8 @@ void CMyApp::InitModels() {
 			CreateGLObjectFromMesh(SuzanneCPU, vertexAttribList), false
 		));
 		*/
+		
+		
 		// SQUARE
 		MeshObject<VertexMergedNorm> ObjectCPU = {
 			{
@@ -214,6 +216,7 @@ void CMyApp::InitModels() {
 			m_programModelID, m_modelTextureID, m_conemapTextureID, glm::identity<glm::mat4>(), // glm::scale(glm::vec3(10.0f, 10.0f, 10.0f))
 			CreateGLObjectFromMesh(ObjectCPU, vertexAttribList), false
 		));
+		
 	}
 	
 	{
@@ -498,8 +501,6 @@ void CMyApp::RenderDebug() {
 		Log::errorToConsole("Unable to map SSBO");
 		return;
 	}
-	Log::logToConsole("Points count: ", n);
-	// std::cout << "n = " << n << std::endl;
 
 	// We always want to see it, regardless of whether there is an object in front of it
 	glDisable(GL_DEPTH_TEST);
@@ -675,6 +676,7 @@ void CMyApp::Render()
 
 void CMyApp::RenderGUI()
 {
+	// Visual debug
 	ImGui::Begin("Visual debug window");
 	{
 
@@ -719,6 +721,7 @@ void CMyApp::RenderGUI()
 	}
 	ImGui::End();
 
+	// Numerical debug
 	ImGui::Begin("Numerical debug window");
 	{
 
@@ -763,6 +766,7 @@ void CMyApp::RenderGUI()
 			glm::vec4* data = (glm::vec4*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
 			if (data) {
 				ImGui::Text("Step count: %.4f", data[0].x);
+				ImGui::Text("Termination flags: %d", (int) data[0].y);
 				ImGui::Text("Eye (scene space): %.4f; %.4f; %.4f", data[1].x, data[1].y, data[1].z);
 				ImGui::Text("Direction (scene space): %.4f; %.4f; %.4f", data[2].x, data[2].y, data[2].z);
 
@@ -871,8 +875,6 @@ void CMyApp::RenderGUI()
 					ImGui::EndTable();
 
 				}
-
-				ImGui::Text("Flags: %d", data[0].y);
 			}
 			glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);

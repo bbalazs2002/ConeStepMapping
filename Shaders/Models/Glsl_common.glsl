@@ -28,19 +28,25 @@ struct IntersectParams{
     int vDebugStart;
 };
 struct IntersectReturn{
+    vec2 uv;
+    float t;
+    float last_t;
+    bool wasHit;
+
     int flags;
     int stepCount;
 };
 struct StepParams {
     vec3 point;
     Ray view;
+    vec2 tex;
 };
 struct StepReturn{
     float t;
-    vec2 conemapData;
 };
 
-// debug functions
+#ifdef GEOMETRY_SHADER
+// debug functionality for the geometry shader
 void visualDebugSet(int index, vec4 data) {
     vdbug[index] = data;
 }
@@ -63,6 +69,15 @@ void numericalDebugSet(int index, mat4x4 data) {
 vec4 numericalDebugGet(int index) {
     return ndbug[index];
 }
+#else
+// debug is not needed in the fragment shader
+void visualDebugSet(int index, vec4 data) {}
+void visualDebugSet(int index, mat4x4 data) {}
+vec4 visualDebugGet(int index) {return vec4(0);}
+void numericalDebugSet(int index, vec4 data) {}
+void numericalDebugSet(int index, mat4x4 data) {}
+vec4 numericalDebugGet(int index) {return vec4(0);}
+#endif
 
 // conemap texture handling
 vec2 conemap_get(vec2 uv) {
@@ -80,76 +95,114 @@ StepReturn getNextStep(StepParams params) {       // current intersection point,
 
     StepReturn val;
 
-    vec2 tex = conemap_get(u.xy);       // texture at the initial point
-    val.conemapData = tex;
+    float az = params.tex.r;            // height
+    float ctga = 1.f / params.tex.g;    // 1 / tg
 
-    vec3 a = vec3(u.xy, tex.r);           // vertex of the cone
-    float ctga = 1.f / tex.g;
-    float sq = ((e.y - a.y) / (e.x - a.x)) * ((e.y - a.y) / (e.x - a.x));
-    float gamma = sqrt(1.f + sq);
-    float t1 = (a.z - u.z) / (v.z - gamma * v.x * ctga);
-    float t2 = (a.z - u.z) / (v.z + gamma * v.x * ctga);
+    float m = sqrt((e.x - u.x) * (e.x - u.x) + (e.y - u.y) * (e.y - u.y)) * ctga;
 
+    float t1 = 0.f;
+    float t2 = 0.f;
+    if (abs(e.x - u.x) > 0.0001f)  {        // e.x - u.x > 0
+        t1 = -(v.x * (az - u.z)) / (v.z * (e.x - u.x) + m * v.x);
+        t2 = -(v.x * (az - u.z)) / (v.z * (e.x - u.x) - m * v.x);
+    } else {                                // e.y - u.y > 0
+        t1 = -(v.y * (az - u.z)) / (v.z * (e.y - u.y) + m * v.y);
+        t1 = -(v.y * (az - u.z)) / (v.z * (e.y - u.y) - m * v.y);
+    }
+    
     val.t = max(t1, t2);
     return val;
 }
-IntersectReturn findIntersection_coneStepMapping(IntersectParams params) {   // u1: enter point, u2: exit point in texture space
+IntersectReturn findIntersection_coneStepMapping(IntersectParams params) {
     vec3 u1 = params.enter;
     vec3 u2 = params.exit;
+    vec3 e = params.cam;
     int stepCount = 0;
     int flags = 0;
 
     // pre-check
     if (conemap_getHeight(u1.xy) >= u1.z) {
 
-        visualDebugSet(params.vDebugStart + stepCount, vec4(u1, 1.));
+        visualDebugSet(params.vDebugStart, vec4(u1, 1.));
 
         flags = int(false) |
             (int(false) << 1) |
-            (int(true)  << 2);
+            (int(false)  << 2);
 
-        numericalDebugSet(0, vec4(stepCount, flags, 0, 0));
-        return IntersectReturn(flags, 0);
+        numericalDebugSet(0, vec4(stepCount, 0, 0, 0));
+        return IntersectReturn(
+            u1.xy,          // uv
+            0.f, 0.f,       // t, last_t
+            true,           // wasHit
+            0, 0            // flags, stepCount
+        );
     }
 
-    vec3 v = u2 - u1;            // direction vector from u1 to u2
+    // vec3 v = u2 - u1;        // direction vector from u1 to u2
+    vec3 v = u1 - e;            // direction vector from e to u1
 
     numericalDebugSet(15, vec4(v, 0));
 
-    float maxT = 1.;      // t parameter of the exit point (u2)
+    float maxT = 10000000.f;        // t parameter of the exit point (u2)
+    /*
+    if (abs(v.x) > 0.0001f) {
+        maxT = (u2.x - e.x) / v.x;             // t parameter of the intersection point (e -> u2)
+    } else if (abs(v.y) > 0.0001f) {
+        maxT = (u2.y - e.y) / v.y;             // t parameter of the intersection point (e -> u2)
+    } else {
+        maxT = (u2.z - e.z) / v.z;             // t parameter of the intersection point (e -> u2)
+    }
+    */
 
     vec3 ui = u1 + 0.000001f * v;
-    float aiz = 0.f;
-    float t = 0.000001f;                     // t parameter of the intersection point (u1 -> ui)
-    float ti = t + 1.f;                      // t parameter of the current step (ui -> ui+1)
+    vec2 tex = conemap_get(ui.xy);
+    // float t = 0.000001f;                 // t parameter of the intersection point (u1 -> ui)
+    float t = 0.f;
+    if (abs(v.x) > 0.0001f) {
+        t = (u1.x - e.x) / v.x;             // t parameter of the intersection point (e -> u1)
+    } else if (abs(v.y) > 0.0001f) {
+        t = (u1.y - e.y) / v.y;             // t parameter of the intersection point (e -> u1)
+    } else {
+        t = (u1.z - e.z) / v.z;             // t parameter of the intersection point (e -> u1)
+    }
+    t += 0.000001f;                         // t parameter of the intersection point (e -> ui)
+    float last_t = 0.f;
+    float ti = t + 1.f;                     // t parameter of the current step (ui -> ui+1)
 
     while(
-        stepCount <= maxSteps &&        // max step count reached => divergent
-        t < maxT &&       	    // Stay within prism
-        ti > 0.0001f * t                 // Stop if cone is close to surface
-        // && ui.z > aiz
+        stepCount <= maxSteps &&            // max step count reached => divergent
+        t < maxT &&       	                // Stay within prism
+        ti > 0.000001f * t                  // Stop if cone is close to surface
     ) {
-        vec2 tex;
-        StepReturn stepData = getNextStep(StepParams(ui, Ray(u1, v)));
+        StepReturn stepData = getNextStep(StepParams(ui, Ray(u1, v), tex));
         ti = stepData.t;
+        last_t = t;
         t += ti;
-        ui = u1 + t * v;
-        aiz = conemap_getHeight(ui.xy);
+        ui = e + t * v;
+        tex = conemap_get(ui.xy);
 
         visualDebugSet(params.vDebugStart + stepCount, vec4(ui, 1));
-        numericalDebugSet(16 + stepCount * 2, vec4(ti, t, stepData.conemapData));
+        numericalDebugSet(16 + stepCount * 2, vec4(ti, t, maxT, tex.x));
         numericalDebugSet(16 + stepCount * 2 + 1, vec4(ui, 0));
+
+        if (ui.z <= tex.r) {    // intersection is below the surface
+            ti = -1.f;
+            break;
+        }
 
         ++stepCount;
     }
 
     flags = int(stepCount > maxSteps) |
             (int(t >= maxT) << 1) |
-            (int(ti <= 0.0001 * t)  << 2);
+            (int(ti <= 0.000001 * t)  << 2);
 
-    numericalDebugSet(0, vec4(stepCount, flags, 0, 0));
-
-    return IntersectReturn(flags, stepCount);
+    return IntersectReturn(
+        ui.xy,
+        t, last_t,
+        bool(flags & 4) && !bool(flags ^ 4),
+        flags, stepCount
+    );
 }
 
 // unit prism intersection
