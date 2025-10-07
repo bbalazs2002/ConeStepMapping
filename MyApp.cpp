@@ -855,6 +855,8 @@ void CMyApp::RenderGUI()
 				ImGui::Text("Out (texture space): %.4f; %.4f; %.4f", data[14].x, data[14].y, data[14].z);
 				ImGui::Text("v (texture space): %.4f; %.4f; %.4f", data[15].x, data[15].y, data[15].z);
 
+				ImGui::Text("plus data: %.4f; %.4f; %.4f; %.4f", data[16].x, data[16].y, data[16].z, data[16].w);
+
 				if (ImGui::BeginTable("Steps", 5)) {
 					ImGui::TableSetupColumn("ti");
 					ImGui::TableSetupColumn("t");
@@ -865,11 +867,11 @@ void CMyApp::RenderGUI()
 
 					for (int i = 0; i < (int)floor(data[0].x); ++i) {
 						ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[16 + i * 2].x);
-						ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[16 + i * 2].y);
-						ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[16 + i * 2].z);
-						ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[16 + i * 2].w);
-						ImGui::TableSetColumnIndex(4); ImGui::Text("%.4f; %.4f; %.4f", data[16 + i * 2 + 1].x, data[16 + i * 2 + 1].y, data[16 + i * 2 + 1].z);
+						ImGui::TableSetColumnIndex(0); ImGui::Text("%.4f", data[17 + i * 2].x);
+						ImGui::TableSetColumnIndex(1); ImGui::Text("%.4f", data[17 + i * 2].y);
+						ImGui::TableSetColumnIndex(2); ImGui::Text("%.4f", data[17 + i * 2].z);
+						ImGui::TableSetColumnIndex(3); ImGui::Text("%.4f", data[17 + i * 2].w);
+						ImGui::TableSetColumnIndex(4); ImGui::Text("%.4f; %.4f; %.4f", data[17 + i * 2 + 1].x, data[17 + i * 2 + 1].y, data[17 + i * 2 + 1].z);
 					}
 
 					ImGui::EndTable();

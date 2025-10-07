@@ -96,16 +96,17 @@ StepReturn getNextStep(StepParams params) {       // current intersection point,
     StepReturn val;
 
     // old intersection
-    /*
+    
     float az = params.tex.r;           // vertex of the cone
     float ctga = 1.f / params.tex.g;
     float sq = ((e.y - u.y) / (e.x - u.x)) * ((e.y - u.y) / (e.x - u.x));
     float gamma = sqrt(1.f + sq);
     float t1 = (az - u.z) / (v.z - gamma * v.x * ctga);
     float t2 = (az - u.z) / (v.z + gamma * v.x * ctga);
-    */
+    
 
     // new intersection
+    /*
     float az = params.tex.r;            // height
     float ctga = 1.f / params.tex.g;    // 1 / tg
     float m = abs(sqrt((e.x - u.x) * (e.x - u.x) + (e.y - u.y) * (e.y - u.y))) * ctga;
@@ -118,8 +119,10 @@ StepReturn getNextStep(StepParams params) {       // current intersection point,
         t1 = -(v.y * (az - u.z)) / (v.z * (e.y - u.y) + m * v.y);
         t2 = -(v.y * (az - u.z)) / (v.z * (e.y - u.y) - m * v.y);
     }
+    */
     
     val.t = max(t1, t2);
+    // val.t = u.x;
     return val;
 }
 IntersectReturn findIntersection_coneStepMapping(IntersectParams params) {
