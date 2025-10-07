@@ -108,7 +108,8 @@ StepReturn getNextStep(StepParams params) {       // current intersection point,
     // new intersection
     float az = params.tex.r;            // height
     float ctga = 1.f / params.tex.g;    // 1 / tg
-    float m = abs(sqrt((e.x - u.x) * (e.x - u.x) + (e.y - u.y) * (e.y - u.y))) * ctga;
+    // float m = abs(sqrt((e.x - u.x) * (e.x - u.x) + (e.y - u.y) * (e.y - u.y))) * ctga;
+    float m = length(u.xy - e.xy) * ctga;
     float t1 = 0.f;
     float t2 = 0.f;
     if (abs(e.x - u.x) > 0.0001f)  {        // e.x - u.x > 0
