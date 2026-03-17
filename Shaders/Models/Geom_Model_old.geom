@@ -137,7 +137,15 @@ void main() {
         if (showEnterExit > 0) {
             visualDebugSet(vDebugIndex++, pNear);
         }
-        IntersectReturn data = findIntersection_coneStepMapping(IntersectParams(pNear.xyz, pFar.xyz, (M * numericalDebugGet(1)).xyz, vDebugIndex));
+
+
+        IntersectReturn data;
+        if (rayMarchingTechnique == 0) {
+            data = findIntersection_linearSearch(IntersectParams(pNear.xyz, pFar.xyz, (M * numericalDebugGet(1)).xyz, vDebugIndex));
+        } else {    // 1
+            data = findIntersection_coneStepMapping(IntersectParams(pNear.xyz, pFar.xyz, (M * numericalDebugGet(1)).xyz, vDebugIndex));
+        }
+        
         vDebugIndex += data.stepCount;
         if (showEnterExit > 0) {
             visualDebugSet(vDebugIndex++, pFar);

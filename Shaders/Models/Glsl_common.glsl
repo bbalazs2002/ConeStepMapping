@@ -87,6 +87,17 @@ float conemap_getHeight(vec2 uv) {
     return conemap_get(uv).r;
 }
 
+vec3 getNormalFromHeightmap(vec2 uv) {
+    float eps = 0.001;
+    float h = texture(coneMap, uv).r;
+    float hx = texture(coneMap, uv + vec2(eps, 0.0)).r;
+    float hy = texture(coneMap, uv + vec2(0.0, eps)).r;
+    
+    vec3 dx = vec3(eps, 0.0, hx - h);
+    vec3 dy = vec3(0.0, eps, hy - h);
+    return normalize(cross(dx, dy));
+}
+
 StepReturn getNextStep(StepParams params) {       // current intersection point, view vector (u1 -> u2)
 
     vec3 u = params.point;
@@ -123,6 +134,38 @@ StepReturn getNextStep(StepParams params) {       // current intersection point,
     val.t = max(t1, t2);
     return val;
 }
+
+IntersectReturn findIntersection_linearSearch(IntersectParams params) {
+    vec3 v = params.exit - params.enter;
+    int stepCount = 0;
+    for (float t = 0.; t <= 1.1 && stepCount <= maxSteps; t += 1./64.) {
+        vec3 u = params.enter + t * v;
+        vec2 tex = conemap_get(u.xy);
+
+        visualDebugSet(params.vDebugStart + stepCount, vec4(u, 1));
+        numericalDebugSet(17 + stepCount * 2, vec4(1./64., t, 1., tex.x));
+        numericalDebugSet(17 + stepCount * 2 + 1, vec4(u, 0));
+
+        if (tex.r > u.z) {
+            // hit found
+            return IntersectReturn(
+                u.xy,          // uv
+                t, t,       // t, last_t
+                true,           // wasHit
+                0, stepCount            // flags, stepCount
+            );
+        }
+        ++stepCount;
+    }
+
+    return IntersectReturn(
+        vec2(0),        // uv
+        0.f, 0.f,       // t, last_t
+        false,          // wasHit
+        0, stepCount    // flags, stepCount
+    );
+}
+
 IntersectReturn findIntersection_coneStepMapping(IntersectParams params) {
     vec3 u1 = params.enter;
     vec3 u2 = params.exit;
@@ -172,7 +215,7 @@ IntersectReturn findIntersection_coneStepMapping(IntersectParams params) {
     float ti = t + 1.f;                 // t parameter of the current step (ui -> ui+1)
 
     // numericalDebugSet(16, vec4(t, maxT, e.x, u1.x));
-    numericalDebugSet(16, vec4(t, maxT, 0,0));
+    numericalDebugSet(16, vec4(t, maxT, tex.r, tex.g));
 
     while(
         stepCount <= maxSteps &&            // max step count reached => divergent
@@ -192,6 +235,15 @@ IntersectReturn findIntersection_coneStepMapping(IntersectParams params) {
 
         ++stepCount;
         
+        if (ti < 0) {           // the ray never intersects the V shape
+            return IntersectReturn(
+                vec2(0, 0),
+                -1, -1,
+                false,
+                0, 0
+            );
+        }
+
         if (ui.z <= tex.r) {    // intersection is below the surface
             ti = -1.f;
             break;
@@ -223,9 +275,12 @@ UnitIntersection intersectUnitPrism(Ray ray) {     // ray in unit prism space
     if (v.y > 0.) { n = max(n, t0.y); } else { f = min(f, t0.y); }
     if (v.z > 0.) { n = max(n, t0.z); } else { f = min(f, t0.z); }
 
+    // top plane
     vec3 q = vec3(1, 1, 0) - p0;
     float t1 = q.y / v.y;
     if (v.y < 0.) { n = max(n, t1); } else { f = min(f, t1); }
+
+    // diagonal plane
     float t2 = (q.x + q.z) / (v.x + v.z);
     if (v.x + v.z < 0.) { n = max(n, t2); } else { f = min(f, t2); }
 

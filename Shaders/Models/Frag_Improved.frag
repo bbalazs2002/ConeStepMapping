@@ -79,11 +79,20 @@ void main() {
     vec3 u2 = (M * inverse(T) * vec4(uu, 1)).xyz;       // exit point in texture space
     
     // find the intersection with the height map
-    IntersectReturn data = findIntersection_coneStepMapping(IntersectParams(
-        u1, u2,             // enter, exit
-        gs_out_TexEye,      // camera position
-        0                   // vDebugStart
-    ));
+    IntersectReturn data;
+    if (rayMarchingTechnique == 0) {
+        data = findIntersection_linearSearch(IntersectParams(
+            u1, u2,             // enter, exit
+            gs_out_TexEye,      // camera position
+            0                   // vDebugStart
+        ));
+    } else {    // 1
+        data = findIntersection_coneStepMapping(IntersectParams(
+            u1, u2,             // enter, exit
+            gs_out_TexEye,      // camera position
+            0                   // vDebugStart
+        ));
+    }
     int flags = data.flags;
 
     if (showFlags > 0) {
@@ -122,17 +131,25 @@ void main() {
     // vec2 u3 = refineIntersection_linearApprox(I, u, u2);
     vec2 u3 = data.uv; // no refine function applied
     
-    /*
     // fetch the final albedo color
-    vec3 albedo = texture(texImage, u3).xyz;
-    col *= albedo;
-    
-    vec3 norm = vec3(0,1,0);
+    // vec3 albedo = texture(texImage, u3).xyz;
+    // col *= albedo;
+    vec3 ambient = texture(texImage, u3).xyz * .5f;
+    vec3 norm = getNormalFromHeightmap(u3);
+    float DiffuseFactor = .4f * max(dot(normalize(lightDir.xzy), norm), 0.0) * 1.f;
+    float diffuse = DiffuseFactor;
 
-    float diffuse = lightIntensity * clamp(dot(-normalize(lightDir), norm), 0, 1.);
-    col.rgb *= diffuse;
-    */
-    col = texture(coneMap, u3).xyz;
+
+	vec3 viewDir = normalize( camPos - gs_out_pos );
+	vec3 reflectDir = reflect( -normalize(lightDir.xzy), norm );
+	float SpecularFactor = pow(max( dot( viewDir, reflectDir) ,0.0), 1.) * .3;
+	float specular = SpecularFactor;
+
+    col.rgb = ambient + diffuse + specular;
+
+    //col = texture(coneMap, u3).xyz;
+
+    // col = getNormalFromHeightmap(u3) * .5 + .5;
 
     // return;
     if (!data.wasHit) {

@@ -154,6 +154,11 @@ protected:
 		"Assets/spikes.png",
 		"Assets/hemisphere.png",
 		"Assets/cone.jpg",
+		"Assets/heightmap-terrain.png",
+		"Assets/heightmap-terrain2.png",
+		"Assets/heightmap-river.png",
+		"Assets/heightmap-pyramid.jpg",
+		"Assets/heightmap-geometries.png",
 		"Assets/Earth-heightmap-small.png",
 		"Assets/desert-heightmap.jpg"
 	};

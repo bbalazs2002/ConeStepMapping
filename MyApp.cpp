@@ -197,18 +197,17 @@ void CMyApp::InitModels() {
 		));
 		*/
 		
-		
 		// SQUARE
 		MeshObject<VertexMergedNorm> ObjectCPU = {
 			{
-				{glm::vec4(0, 0, 0, 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 0)},
-				{glm::vec4(0, 0, 1., 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 1.)},
-				{glm::vec4(1., 0, 1., 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 1.)},
-				{glm::vec4(1., 0, 0, 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 0)}
+				{glm::vec4(0, 0, 0, 10.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 0)},
+				{glm::vec4(0, 0, 10., 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(0, 1.)},
+				{glm::vec4(10., 0, 10., 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 1.)},
+				{glm::vec4(10., 0, 0, 1.), glm::vec3(0, 1., 0), glm::vec3(0, 1., 0), glm::vec2(1., 0)}
 			},
 			{
 				0,1,2,
-				// 0,2,3
+				0,2,3
 			}
 		};
 		
@@ -317,12 +316,12 @@ void CMyApp::CleanConemapTexture() {
 void CMyApp::InitSkyboxTexture() {
 	// skybox texture
 	static const char* skyboxFiles[6] = {
-		"Assets/xpos.png",
-		"Assets/xneg.png",
-		"Assets/ypos.png",
-		"Assets/yneg.png",
-		"Assets/zpos.png",
-		"Assets/zneg.png",
+		"Assets/sky1/px.png",
+		"Assets/sky1/nx.png",
+		"Assets/sky1/py.png",
+		"Assets/sky1/ny.png",
+		"Assets/sky1/pz.png",
+		"Assets/sky1/nz.png",
 	};
 
 	ImageRGBA images[6];
@@ -516,7 +515,7 @@ void CMyApp::RenderDebug() {
 
 		GLfloat pointSize;
 		glGetFloatv(GL_POINT_SIZE, &pointSize);
-		glPointSize(10.f);
+		glPointSize(20.f);
 
 		glDrawArrays(GL_POINTS, 0, n);
 
@@ -665,7 +664,7 @@ void CMyApp::Render()
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	RenderModels();
-	// RenderSkybox();
+	RenderSkybox();
 	if (m_showAxes) {
 		DrawAxes();
 	}
